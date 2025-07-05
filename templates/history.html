@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WalletTrack - Balance History</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <nav class="bg-blue-600 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <h1 class="text-2xl font-bold">💰 WalletTrack</h1>
+                <span class="text-blue-200">Balance History</span>
+            </div>
+            <div class="flex space-x-4">
+                <a href="/" class="bg-blue-500 hover:bg-blue-700 px-4 py-2 rounded transition-colors">
+                    🏠 Dashboard
+                </a>
+                <a href="/history" class="bg-blue-700 px-4 py-2 rounded">
+                    📊 History
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-6">
+        <!-- Controls -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center space-x-4">
+                    <label class="text-gray-700 font-medium">Wallet:</label>
+                    <select id="walletSelector" class="border border-gray-300 rounded-md px-3 py-2 bg-white">
+                        <option value="all">All Wallets</option>
+                    </select>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <label class="text-gray-700 font-medium">Time Period:</label>
+                    <select id="periodSelector" class="border border-gray-300 rounded-md px-3 py-2 bg-white">
+                        <option value="1">Last 24 Hours</option>
+                        <option value="3">Last 3 Days</option>
+                        <option value="7" selected>Last 7 Days</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                    </select>
+                </div>
+                
+                <button id="refreshBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors flex items-center space-x-2">
+                    <span>🔄</span>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div id="summaryCards" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <!-- Summary cards will be populated here -->
+        </div>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Balance History Chart -->
+            <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Balance History Chart</h2>
+                    <div class="flex space-x-2">
+                        <button id="chartTypeBtn" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded">
+                            📈 Line Chart
+                        </button>
+                    </div>
+                </div>
+                <div class="relative" style="height: 400px;">
+                    <canvas id="balanceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Recent Changes -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Recent Changes</h2>
+                <div id="recentChanges" class="space-y-3 max-h-96 overflow-y-auto">
+                    <!-- Recent changes will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed History Table -->
+        <div class="bg-white rounded-lg shadow-md p-6 mt-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">Detailed Balance History</h2>
+                <div id="historyStats" class="text-sm text-gray-600">
+                    <!-- Stats will be populated here -->
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wallet</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Before</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">After</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Change</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- History data will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span class="text-gray-700">Loading history data...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class HistoryManager {
+            constructor() {
+                this.wallets = [];
+                this.currentWalletId = 'all';
+                this.currentPeriod = 7;
+                this.chart = null;
+                this.websocket = null;
+                
+                this.init();
+            }
+
+            init() {
+                console.log('HistoryManager initializing...');
+                this.setupEventListeners();
+                this.connectWebSocket();
+                this.loadWallets();
+                this.loadHistoryData();
+            }
+
+            setupEventListeners() {
+                document.getElementById('walletSelector').addEventListener('change', (e) => {
+                    this.currentWalletId = e.target.value;
+                    this.loadHistoryData();
+                });
+
+                document.getElementById('periodSelector').addEventListener('change', (e) => {
+                    this.currentPeriod = parseInt(e.target.value);
+                    this.loadHistoryData();
+                });
+
+                document.getElementById('refreshBtn').addEventListener('click', () => {
+                    this.loadHistoryData();
+                });
+
+                document.getElementById('chartTypeBtn').addEventListener('click', () => {
+                    this.toggleChartType();
+                });
+            }
+
+            connectWebSocket() {
+                const wsUrl = `ws://${window.location.host}/ws`;
+                this.websocket = new WebSocket(wsUrl);
+
+                this.websocket.onopen = () => {
+                    console.log('WebSocket connected for history page');
+                };
+
+                this.websocket.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    this.handleWebSocketMessage(message);
+                };
+
+                this.websocket.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                };
+            }
+
+            handleWebSocketMessage(message) {
+                switch(message.type) {
+                    case 'balance_update':
+                        // Refresh current data when balances update
+                        setTimeout(() => this.loadHistoryData(), 1000);
+                        break;
+                    case 'connection_established':
+                        console.log('History page connected to WebSocket');
+                        break;
+                }
+            }
+
+            showLoading() {
+                document.getElementById('loadingIndicator').classList.remove('hidden');
+            }
+
+            hideLoading() {
+                document.getElementById('loadingIndicator').classList.add('hidden');
+            }
+
+            async loadWallets() {
+                try {
+                    const response = await fetch('/api/wallets');
+                    const wallets = await response.json();
+                    this.wallets = wallets;
+                    
+                    const selector = document.getElementById('walletSelector');
+                    
+                    // Clear existing options except "All Wallets"
+                    while (selector.children.length > 1) {
+                        selector.removeChild(selector.lastChild);
+                    }
+                    
+                    // Add wallet options
+                    wallets.forEach(wallet => {
+                        const option = document.createElement('option');
+                        option.value = wallet.id;
+                        option.textContent = `${wallet.name} (${wallet.blockchain.name}) - ${wallet.address.substring(0, 10)}...`;
+                        selector.appendChild(option);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading wallets:', error);
+                }
+            }
+
+            async loadHistoryData() {
+                this.showLoading();
+                
+                try {
+                    let url;
+                    if (this.currentWalletId === 'all') {
+                        url = `/api/wallets/history/all?days=${this.currentPeriod}`;
+                    } else {
+                        url = `/api/wallets/${this.currentWalletId}/history?days=${this.currentPeriod}`;
+                    }
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    if (this.currentWalletId === 'all') {
+                        this.displayAllWalletsHistory(data);
+                    } else {
+                        this.displaySingleWalletHistory(data);
+                    }
+                    
+                } catch (error) {
+                    console.error('Error loading history data:', error);
+                    this.showError('Failed to load history data');
+                } finally {
+                    this.hideLoading();
+                }
+            }
+
+            displayAllWalletsHistory(data) {
+                this.updateSummaryCards(data);
+                this.updateRecentChanges(data.wallets);
+                this.updateHistoryTable(data.wallets);
+                this.updateChart(data.wallets, 'all');
+            }
+
+            displaySingleWalletHistory(data) {
+                const summaryData = {
+                    total_wallets: 1,
+                    period: data.summary.period,
+                    summary: data.summary
+                };
+                
+                this.updateSummaryCards(summaryData);
+                this.updateRecentChanges([data]);
+                this.updateHistoryTable([data]);
+                this.updateChart([data], 'single');
+            }
+
+            updateSummaryCards(data) {
+                const summaryCards = document.getElementById('summaryCards');
+                
+                if (data.total_wallets !== undefined) {
+                    // All wallets view
+                    const totalChanges = data.wallets ? data.wallets.reduce((sum, w) => sum + w.total_changes, 0) : 0;
+                    const totalTokens = data.wallets ? data.wallets.reduce((sum, w) => sum + w.current_tokens, 0) : 0;
+                    
+                    summaryCards.innerHTML = `
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-blue-600 text-2xl mr-3">👛</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Total Wallets</p>
+                                    <p class="text-2xl font-bold text-blue-600">${data.total_wallets}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-green-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-green-600 text-2xl mr-3">🪙</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Total Tokens</p>
+                                    <p class="text-2xl font-bold text-green-600">${totalTokens}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-purple-600 text-2xl mr-3">📈</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Balance Changes</p>
+                                    <p class="text-2xl font-bold text-purple-600">${totalChanges}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-orange-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-orange-600 text-2xl mr-3">📅</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Time Period</p>
+                                    <p class="text-lg font-bold text-orange-600">${data.period}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Single wallet view
+                    summaryCards.innerHTML = `
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-blue-600 text-2xl mr-3">🪙</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Active Tokens</p>
+                                    <p class="text-2xl font-bold text-blue-600">${data.summary.total_tokens}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-green-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-green-600 text-2xl mr-3">📈</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Total Changes</p>
+                                    <p class="text-2xl font-bold text-green-600">${data.summary.total_changes}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-purple-600 text-2xl mr-3">📅</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Time Period</p>
+                                    <p class="text-lg font-bold text-purple-600">${data.summary.period}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-orange-50 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <div class="text-orange-600 text-2xl mr-3">⚡</div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Status</p>
+                                    <p class="text-lg font-bold text-orange-600">Active</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            updateRecentChanges(wallets) {
+                const container = document.getElementById('recentChanges');
+                const allChanges = [];
+                
+                wallets.forEach(wallet => {
+                    if (wallet.recent_changes) {
+                        wallet.recent_changes.forEach(change => {
+                            allChanges.push({
+                                ...change,
+                                wallet_name: wallet.wallet_name,
+                                wallet_address: wallet.wallet_address,
+                                blockchain: wallet.blockchain
+                            });
+                        });
+                    }
+                });
+                
+                // Sort by timestamp (newest first)
+                allChanges.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                if (allChanges.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500 text-center py-4">No recent changes found</p>';
+                    return;
+                }
+                
+                container.innerHTML = allChanges.slice(0, 10).map(change => {
+                    const changeIcon = change.change_type === 'increase' ? '📈' : change.change_type === 'decrease' ? '📉' : '📊';
+                    const changeColor = change.change_type === 'increase' ? 'text-green-600' : change.change_type === 'decrease' ? 'text-red-600' : 'text-blue-600';
+                    const percentage = change.change_percentage ? ` (${change.change_percentage > 0 ? '+' : ''}${change.change_percentage.toFixed(2)}%)` : '';
+                    
+                    return `
+                        <div class="border-l-4 ${change.change_type === 'increase' ? 'border-green-500' : change.change_type === 'decrease' ? 'border-red-500' : 'border-blue-500'} pl-4 py-2">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-lg">${changeIcon}</span>
+                                    <span class="font-medium">${change.token_symbol}</span>
+                                </div>
+                                <span class="text-xs text-gray-500">${new Date(change.timestamp).toLocaleString()}</span>
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                ${change.wallet_name} (${change.blockchain})
+                            </div>
+                            <div class="text-sm ${changeColor}">
+                                ${change.balance_before.toFixed(6)} → ${change.balance_after.toFixed(6)}${percentage}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            updateHistoryTable(wallets) {
+                const tbody = document.getElementById('historyTableBody');
+                const allChanges = [];
+                
+                wallets.forEach(wallet => {
+                    if (wallet.recent_changes) {
+                        wallet.recent_changes.forEach(change => {
+                            allChanges.push({
+                                ...change,
+                                wallet_name: wallet.wallet_name,
+                                wallet_address: wallet.wallet_address,
+                                blockchain: wallet.blockchain
+                            });
+                        });
+                    }
+                });
+                
+                // Sort by timestamp (newest first)
+                allChanges.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                if (allChanges.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">No history data available</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = allChanges.map(change => {
+                    const changeColor = change.change_type === 'increase' ? 'text-green-600' : change.change_type === 'decrease' ? 'text-red-600' : 'text-blue-600';
+                    const changeIcon = change.change_type === 'increase' ? '↗️' : change.change_type === 'decrease' ? '↘️' : '↔️';
+                    
+                    return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${new Date(change.timestamp).toLocaleString()}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div>
+                                    <div class="font-medium">${change.wallet_name}</div>
+                                    <div class="text-gray-500">${change.blockchain}</div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                ${change.token_symbol}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${change.balance_before.toFixed(6)}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                ${change.balance_after.toFixed(6)}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm ${changeColor}">
+                                ${change.change_amount > 0 ? '+' : ''}${change.change_amount.toFixed(6)}
+                                ${change.change_percentage ? ` (${change.change_percentage > 0 ? '+' : ''}${change.change_percentage.toFixed(2)}%)` : ''}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm ${changeColor}">
+                                ${changeIcon} ${change.change_type}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Update stats
+                const stats = document.getElementById('historyStats');
+                stats.textContent = `${allChanges.length} total changes found`;
+            }
+
+            updateChart(wallets, type) {
+                const canvas = document.getElementById('balanceChart');
+                const ctx = canvas.getContext('2d');
+                
+                // Destroy existing chart if it exists
+                if (this.chart) {
+                    this.chart.destroy();
+                    this.chart = null;
+                }
+
+                const datasets = [];
+                const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#06B6D4'];
+                let colorIndex = 0;
+
+                if (type === 'single' && wallets[0].token_histories) {
+                    // Single wallet - show token balance over time
+                    wallets[0].token_histories.forEach(tokenHistory => {
+                        const data = tokenHistory.data_points.map(point => ({
+                            x: new Date(point.timestamp),
+                            y: point.balance_after
+                        })).reverse(); // Reverse to show chronological order
+
+                        datasets.push({
+                            label: tokenHistory.token_symbol,
+                            data: data,
+                            borderColor: colors[colorIndex % colors.length],
+                            backgroundColor: colors[colorIndex % colors.length] + '20',
+                            tension: 0.1,
+                            fill: false
+                        });
+                        colorIndex++;
+                    });
+                } else {
+                    // All wallets - show number of changes over time
+                    const changesByDate = {};
+                    
+                    wallets.forEach(wallet => {
+                        if (wallet.recent_changes) {
+                            wallet.recent_changes.forEach(change => {
+                                const date = new Date(change.timestamp).toDateString();
+                                if (!changesByDate[date]) {
+                                    changesByDate[date] = 0;
+                                }
+                                changesByDate[date]++;
+                            });
+                        }
+                    });
+
+                    let data = Object.entries(changesByDate)
+                        .map(([date, count]) => ({
+                            x: new Date(date),
+                            y: count
+                        }))
+                        .sort((a, b) => a.x - b.x);
+
+                    // If no changes data, create a sample chart showing current token counts
+                    if (data.length === 0) {
+                        const now = new Date();
+                        const startDate = new Date(now.getTime() - (this.currentPeriod * 24 * 60 * 60 * 1000));
+                        
+                        wallets.forEach((wallet, index) => {
+                            if (wallet.current_tokens > 0) {
+                                datasets.push({
+                                    label: `${wallet.wallet_name} (${wallet.blockchain})`,
+                                    data: [
+                                        { x: startDate, y: wallet.current_tokens },
+                                        { x: now, y: wallet.current_tokens }
+                                    ],
+                                    borderColor: colors[index % colors.length],
+                                    backgroundColor: colors[index % colors.length] + '20',
+                                    tension: 0.1,
+                                    fill: false
+                                });
+                            }
+                        });
+                    } else {
+                        datasets.push({
+                            label: 'Balance Changes per Day',
+                            data: data,
+                            borderColor: colors[0],
+                            backgroundColor: colors[0] + '20',
+                            tension: 0.1,
+                            fill: true
+                        });
+                    }
+                }
+
+                // Don't create chart if no datasets
+                if (datasets.length === 0) {
+                    console.log('No data available for chart');
+                    return;
+                }
+
+                try {
+                    this.chart = new Chart(ctx, {
+                        type: 'line',
+                        data: { datasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: this.currentPeriod <= 1 ? 'hour' : 'day',
+                                        displayFormats: {
+                                            hour: 'MMM dd HH:mm',
+                                            day: 'MMM dd'
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Time'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: type === 'single' ? 'Token Balance' : 'Number of Changes'
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        title: function(context) {
+                                            return new Date(context[0].parsed.x).toLocaleString();
+                                        }
+                                    }
+                                }
+                            },
+                            interaction: {
+                                mode: 'nearest',
+                                axis: 'x',
+                                intersect: false
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error creating chart:', error);
+                    // Fallback: show a message instead of chart
+                    const chartContainer = document.getElementById('balanceChart').parentElement;
+                    chartContainer.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><p>📊 Chart data not available</p></div>';
+                }
+            }
+
+            toggleChartType() {
+                // Future enhancement: toggle between line chart and bar chart
+                console.log('Chart type toggle - feature coming soon!');
+            }
+
+            cleanup() {
+                if (this.chart) {
+                    this.chart.destroy();
+                    this.chart = null;
+                }
+                if (this.websocket) {
+                    this.websocket.close();
+                    this.websocket = null;
+                }
+            }
+
+            showError(message) {
+                const toast = document.createElement('div');
+                toast.className = 'fixed top-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg z-50';
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.remove();
+                }, 5000);
+            }
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            const historyManager = new HistoryManager();
+            
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                historyManager.cleanup();
+            });
+        });
+    </script>
+</body>
+</html>

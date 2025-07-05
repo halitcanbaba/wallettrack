@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WalletTrack Pro - Financial Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">WALLETTRACK PRO</div>
+            <div class="header-actions">
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <button class="add-wallet-btn" onclick="toggleAddWalletForm()">+ ADD WALLET</button>
+            </div>
+        </header>
+
+        <!-- Add Wallet Form -->
+        <div id="addWalletForm" class="add-wallet-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Wallet Address</label>
+                    <input type="text" id="walletAddress" class="form-input" placeholder="0x... or T...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Network</label>
+                    <select id="walletNetwork" class="form-select">
+                        <option value="ethereum">Ethereum</option>
+                        <option value="tron">TRON</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="addWallet()">ADD WALLET</button>
+                <button class="btn btn-secondary" onclick="toggleAddWalletForm()">CANCEL</button>
+            </div>
+        </div>
+
+        <!-- Token Balances Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Token Balances</h2>
+                <div class="section-meta">Real-time portfolio tracking</div>
+            </div>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Wallet</th>
+                            <th>Network</th>
+                            <th>Token</th>
+                            <th>Balance</th>
+                            <th>USD Value</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="balanceTableBody">
+                        <tr id="initialLoadingRow">
+                            <td colspan="7" class="loading-row">Loading wallet data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Recent Transactions Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Recent Transactions</h2>
+                <div class="section-meta">Last 1 hour • Real-time updates</div>
+            </div>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Hash</th>
+                            <th>Token/Coin</th>
+                            <th>Amount</th>
+                            <th>Direction</th>
+                            <th>From/To</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTableBody">
+                        <tr>
+                            <td colspan="7" class="loading-row">Loading recent transactions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/static/js/utils.js?v=2"></script>
+    <script src="/static/js/wallet-tracker.js?v=2"></script>
+    <script>
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                console.log('DOM loaded, initializing WalletTracker...');
+                window.walletTracker = new WalletTracker();
+            } catch (error) {
+                console.error('Failed to initialize WalletTracker:', error);
+                const tbody = document.getElementById('balanceTableBody');
+                if (tbody) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="loading-row" style="color: #ff4757;">
+                                <i class="fas fa-exclamation-triangle"></i> Failed to initialize: ${error.message}
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

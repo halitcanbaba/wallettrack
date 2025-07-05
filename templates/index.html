@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Blockchain Wallet Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-connected { background-color: #10b981; }
+        .status-disconnected { background-color: #ef4444; }
+        .status-connecting { background-color: #f59e0b; }
+        
+        .wallet-card {
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            border: 1px solid #4b5563;
+        }
+        
+        .wallet-card.updated {
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+            border-color: #3b82f6;
+        }
+        
+        .balance-item {
+            transition: color 0.3s ease;
+        }
+        
+        .balance-item.updated {
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .balance-positive {
+            color: #10b981; /* Green for positive */
+        }
+        
+        .balance-negative {
+            color: #ef4444; /* Red for negative */
+        }
+        
+        .transaction-in {
+            color: #10b981; /* Green for incoming */
+        }
+        
+        .transaction-out {
+            color: #ef4444; /* Red for outgoing */
+        }
+        
+        .network-token-table {
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            border: 1px solid #4b5563;
+        }
+        
+        .dark-table th {
+            background-color: #374151;
+            color: #f9fafb;
+        }
+        
+        .dark-table td {
+            background-color: #1f2937;
+            color: #f9fafb;
+            border-color: #4b5563;
+        }
+        
+        /* Smooth animations for table updates */
+        #transactionsList {
+            transition: opacity 0.3s ease-in-out;
+        }
+        
+        #transactionsList tr {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        #transactionsList tr.new-transaction {
+            animation: slideInFade 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        @keyframes slideInFade {
+            from {
+                opacity: 0;
+                transform: translateY(-15px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        .updating {
+            opacity: 0.8;
+            pointer-events: none;
+            transform: translateZ(0); /* Force hardware acceleration */
+        }
+        
+        /* Prevent layout shifts */
+        #transactionsList {
+            backface-visibility: hidden;
+            transform: translateZ(0);
+            will-change: contents;
+        }
+    </style>
+</head>
+<body class="bg-black min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header with Navigation -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-4xl font-bold text-white">💰 WalletTrack</h1>
+                <div class="flex space-x-4">
+                    <a href="/" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                        🏠 Dashboard
+                    </a>
+                    <a href="/history" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors">
+                        📊 History
+                    </a>
+                </div>
+            </div>
+            <p class="text-gray-300 mb-4">Advanced cryptocurrency wallet monitoring with real-time balance tracking</p>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <span class="status-indicator" id="connectionStatus"></span>
+                    <span class="text-sm text-gray-300" id="connectionText">Connecting...</span>
+                </div>
+                <div class="text-sm text-gray-300">
+                    Last Updated: <span id="lastUpdated">Never</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Wallet Form -->
+        <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-8 border border-gray-600">
+            <h2 class="text-2xl font-semibold text-white mb-4">Add New Wallet</h2>
+            <form id="addWalletForm" class="flex flex-col gap-4">
+                <div class="flex flex-col md:flex-row gap-4">
+                    <div class="flex-1">
+                        <label for="blockchainSelect" class="block text-sm font-medium text-gray-300 mb-2">
+                            Blockchain
+                        </label>
+                        <select 
+                            id="blockchainSelect" 
+                            name="blockchain"
+                            class="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white"
+                            required
+                        >
+                            <option value="TRON">TRON</option>
+                            <option value="ETH">Ethereum</option>
+                        </select>
+                    </div>
+                    <div class="flex-2">
+                        <label for="walletAddress" class="block text-sm font-medium text-gray-300 mb-2">
+                            Wallet Address
+                        </label>
+                        <input 
+                            type="text" 
+                            id="walletAddress" 
+                            name="address"
+                            placeholder="T... or 0x..." 
+                            class="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white placeholder-gray-400"
+                            required
+                        >
+                    </div>
+                    <div class="flex-1">
+                        <label for="walletName" class="block text-sm font-medium text-gray-300 mb-2">
+                            Wallet Name (Optional)
+                        </label>
+                        <input 
+                            type="text" 
+                            id="walletName" 
+                            name="name"
+                            placeholder="My Wallet" 
+                            class="w-full px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white placeholder-gray-400"
+                        >
+                    </div>
+                </div>
+                <div class="flex justify-end">
+                    <button 
+                        type="submit" 
+                        class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                        id="addWalletBtn"
+                    >
+                        Add Wallet
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Wallets Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- Wallet List -->
+            <div class="bg-gray-800 rounded-lg shadow-md p-6 border border-gray-600">
+                <h2 class="text-2xl font-semibold text-white mb-4">Monitored Wallets</h2>
+                <div id="walletsList" class="space-y-4">
+                    <!-- Wallets will be populated here -->
+                </div>
+            </div>
+
+            <!-- Network Token Balance Table -->
+            <div class="network-token-table rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold text-white mb-4">Network Token Balance</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-600">
+                        <thead class="dark-table">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Network</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Token</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Balance</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">24h Change</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="networkTokenTable" class="dark-table divide-y divide-gray-600">
+                            <!-- Token balances will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-8 border border-gray-600">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-semibold text-white flex items-center">
+                    Recent Transfers 
+                    <span id="transaction-count-badge" class="ml-2 bg-blue-500 text-white text-sm px-2 py-1 rounded-full">0</span>
+                </h2>
+                <div class="flex space-x-2">
+                    <select 
+                        id="transactionWalletFilter" 
+                        class="px-3 py-2 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-gray-700 text-white"
+                    >
+                        <option value="">All Wallets</option>
+                    </select>
+                    <button 
+                        id="refreshTransactions"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    >
+                        Refresh
+                    </button>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-600">
+                    <thead class="dark-table">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Direction</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Amount</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">From/To</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Time</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">Hash</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsList" class="dark-table divide-y divide-gray-600">
+                        <!-- Transactions will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Error Messages -->
+        <div id="errorContainer" class="fixed bottom-4 right-4 space-y-2"></div>
+    </div>
+
+    <script>
+        class WalletMonitor {
+            constructor() {
+                this.websocket = null;
+                this.wallets = new Map();
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.transactions = [];
+                this.currentView = 'transactions'; // Track current view
+                this.selectedWalletId = null; // Track selected wallet ID for transactions
+                
+                // Timeout variables for debouncing
+                this.displayTransactionsTimeout = null;
+                this.addTransactionTimeout = null;
+                this.newTransactionsTimeout = null;
+                this.transactionUpdateTimeout = null;
+                
+                this.init();
+            }
+
+            init() {
+                console.log('WalletMonitor initializing...');
+                this.setupEventListeners();
+                this.connectWebSocket();
+                this.loadWallets();
+                this.loadTransactions();
+                this.requestNotificationPermission();
+                this.startHeartbeat();
+                this.startPeriodicUpdates(); // Add periodic updates
+                console.log('WalletMonitor initialized');
+            }
+
+            setupEventListeners() {
+                // Add wallet form
+                document.getElementById('addWalletForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.addWallet();
+                });
+
+                // Event delegation for remove buttons
+                document.getElementById('walletsList').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('remove-wallet-btn')) {
+                        const walletId = parseInt(e.target.dataset.walletId);
+                        this.removeWallet(walletId);
+                    }
+                });
+
+                // Transaction refresh button
+                document.getElementById('refreshTransactions').addEventListener('click', () => {
+                    this.loadTransactions();
+                });
+
+                // Transaction wallet filter
+                document.getElementById('transactionWalletFilter').addEventListener('change', (e) => {
+                    this.filterTransactions(e.target.value);
+                });
+            }
+
+            connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                
+                this.updateConnectionStatus('connecting');
+                
+                this.websocket = new WebSocket(wsUrl);
+                
+                this.websocket.onopen = () => {
+                    console.log('WebSocket connected');
+                    this.updateConnectionStatus('connected');
+                    this.reconnectAttempts = 0;
+                };
+                
+                this.websocket.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    this.handleWebSocketMessage(message);
+                };
+                
+                this.websocket.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    this.updateConnectionStatus('disconnected');
+                    this.attemptReconnect();
+                };
+                
+                this.websocket.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.updateConnectionStatus('disconnected');
+                };
+            }
+
+            attemptReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                    setTimeout(() => this.connectWebSocket(), 3000 * this.reconnectAttempts);
+                }
+            }
+
+            updateConnectionStatus(status) {
+                const indicator = document.getElementById('connectionStatus');
+                const text = document.getElementById('connectionText');
+                
+                indicator.className = `status-indicator status-${status}`;
+                
+                switch(status) {
+                    case 'connected':
+                        text.textContent = 'Connected';
+                        break;
+                    case 'connecting':
+                        text.textContent = 'Connecting...';
+                        break;
+                    case 'disconnected':
+                        text.textContent = 'Disconnected';
+                        break;
+                }
+            }
+
+            handleWebSocketMessage(message) {
+                console.log('WebSocket message received:', message);
+                
+                switch(message.type) {
+                    case 'balance_update':
+                        console.log('Processing balance update:', message.data);
+                        this.updateWalletBalance(message.data);
+                        this.updateLastUpdated();
+                        this.showNotification(`Balance updated for ${message.data.blockchain} wallet`, 'success');
+                        break;
+                    case 'wallet_added':
+                        console.log('Processing wallet added:', message.data);
+                        this.addWalletToList(message.data);
+                        this.showNotification('New wallet added successfully', 'success');
+                        break;
+                    case 'wallet_removed':
+                        console.log('Processing wallet removed:', message.data);
+                        this.removeWalletFromList(message.data.wallet_id);
+                        this.showNotification('Wallet removed successfully', 'success');
+                        break;
+                    case 'new_transaction':
+                        console.log('Processing new transaction:', message.data);
+                        this.addNewTransaction(message.data);
+                        this.updateLastUpdated();
+                        break;
+                    case 'tron_balance_update':
+                        console.log('Processing TRON balance update:', message.data);
+                        this.updateTronBalance(message.data);
+                        this.updateLastUpdated();
+                        this.showNotification(`TRON balance updated for wallet`, 'success');
+                        break;
+                    case 'eth_balance_update':
+                        console.log('Processing ETH balance update:', message.data);
+                        this.updateEthBalance(message.data);
+                        this.updateLastUpdated();
+                        this.showNotification(`ETH balance updated for wallet`, 'success');
+                        break;
+                    case 'tron_transaction':
+                        console.log('Processing TRON transaction:', message.data);
+                        this.handleTronTransaction(message.data);
+                        this.updateLastUpdated();
+                        break;
+                    case 'eth_transaction':
+                        console.log('Processing ETH transaction:', message.data);
+                        this.handleEthTransaction(message.data);
+                        this.updateLastUpdated();
+                        break;
+                    case 'transactions_update':
+                        console.log('Processing transactions update:', message.data);
+                        this.handleTransactionsUpdate(message.data);
+                        break;
+                    case 'wallet_transactions_update':
+                        console.log('Processing wallet transactions update:', message.data);
+                        this.handleWalletTransactionsUpdate(message.data);
+                        break;
+                    case 'new_transactions':
+                        console.log('Processing new transactions:', message.data);
+                        this.handleNewTransactions(message.data);
+                        break;
+                    case 'transaction_notification':
+                        console.log('Processing transaction notification:', message.data);
+                        this.showTransactionNotification(message.data);
+                        break;
+                    case 'connection_established':
+                        console.log('WebSocket connection established:', message.message);
+                        this.showNotification('Connected to real-time updates', 'success');
+                        break;
+                    case 'heartbeat':
+                        console.log('WebSocket heartbeat - Active connections:', message.active_connections);
+                        break;
+                    case 'pong':
+                        console.log('WebSocket pong received');
+                        break;
+                    default:
+                        console.warn('Unknown WebSocket message type:', message.type);
+                        break;
+                }
+            }
+
+            addNewTransaction(transaction) {
+                // Enhanced duplicate prevention with multiple checks
+                const isDuplicate = this.transactions.some(tx => {
+                    // Primary check: hash match (most reliable)
+                    if (tx.hash && transaction.hash && tx.hash === transaction.hash) {
+                        return true;
+                    }
+                    
+                    // Secondary check: signature match (for transactions without hash or with temporary hash)
+                    const signatureMatch = tx.from === transaction.from && 
+                                         tx.to === transaction.to && 
+                                         Math.abs(tx.amount - transaction.amount) < 0.000001 && // Handle floating point precision
+                                         Math.abs(new Date(tx.timestamp) - new Date(transaction.timestamp)) < 5000; // Within 5 seconds
+                    
+                    return signatureMatch;
+                });
+                
+                if (isDuplicate) {
+                    console.log('Duplicate transaction detected, skipping:', transaction.hash);
+                    return;
+                }
+                
+                // Validate transaction data before adding
+                if (!transaction.from || !transaction.to || transaction.amount === undefined) {
+                    console.warn('Invalid transaction data, skipping:', transaction);
+                    return;
+                }
+                
+                // Add new transaction to the beginning of the list
+                this.transactions.unshift(transaction);
+                
+                // Keep only last 100 transactions to prevent memory bloat
+                if (this.transactions.length > 100) {
+                    this.transactions = this.transactions.slice(0, 100);
+                }
+                
+                // Update transaction counter
+                this.updateTransactionCounter();
+                
+                // More aggressive debouncing to prevent rapid updates
+                if (this.addTransactionTimeout) {
+                    clearTimeout(this.addTransactionTimeout);
+                }
+                
+                this.addTransactionTimeout = setTimeout(() => {
+                    this.displayTransactions(this.transactions);
+                    this.addTransactionTimeout = null;
+                }, 750); // Increased from 500ms to 750ms for more stability
+            }
+
+            async loadWallets() {
+                try {
+                    console.log('Loading wallets...');
+                    const response = await fetch('/api/wallets');
+                    const wallets = await response.json();
+                    console.log('Wallets loaded:', wallets);
+                    
+                    this.wallets.clear();
+                    document.getElementById('walletsList').innerHTML = '';
+                    
+                    for (const wallet of wallets) {
+                        this.addWalletToList(wallet);
+                    }
+                    console.log('Wallets added to list, total:', this.wallets.size);
+                    
+                    // Update network token table after loading all wallets
+                    this.updateNetworkTokenTable();
+                } catch (error) {
+                    console.error('Error loading wallets:', error);
+                    this.showError('Failed to load wallets');
+                }
+            }
+
+            addWalletToList(wallet) {
+                console.log('Adding wallet to list:', wallet);
+                
+                // Defensive programming - check if wallet has required properties
+                if (!wallet || !wallet.blockchain || !wallet.blockchain.name) {
+                    console.error('Invalid wallet structure:', wallet);
+                    return;
+                }
+                
+                // Filter out scam tokens from initial wallet balances
+                if (wallet.balances && Array.isArray(wallet.balances)) {
+                    wallet.balances = wallet.balances.filter(balance => this.isLegitimateToken(balance.token_symbol));
+                }
+                
+                this.wallets.set(wallet.id, wallet);
+                
+                const walletElement = document.createElement('div');
+                walletElement.id = `wallet-${wallet.id}`;
+                walletElement.className = 'wallet-card rounded-lg p-4 hover:shadow-md transition-shadow';
+                walletElement.dataset.walletId = wallet.id;
+                
+                let balanceHtml = '';
+                if (wallet.blockchain.name === 'ETH') {
+                    // Create dynamic grid for all tokens
+                    balanceHtml = '<div class="grid grid-cols-2 gap-4 text-sm">';
+                    
+                    // Filter out scam tokens and sort legitimate tokens
+                    const filteredBalances = (wallet.balances || []).filter(balance => this.isLegitimateToken(balance.token_symbol));
+                    const sortedBalances = [...filteredBalances].sort((a, b) => {
+                        // ETH always comes first
+                        if (a.token_symbol === 'ETH') return -1;
+                        if (b.token_symbol === 'ETH') return 1;
+                        
+                        // Stablecoins come next
+                        const stablecoins = ['USDT', 'USDC', 'DAI'];
+                        const aIsStable = stablecoins.includes(a.token_symbol);
+                        const bIsStable = stablecoins.includes(b.token_symbol);
+                        
+                        if (aIsStable && !bIsStable) return -1;
+                        if (!aIsStable && bIsStable) return 1;
+                        
+                        // Alphabetical order for everything else
+                        return a.token_symbol.localeCompare(b.token_symbol);
+                    });
+                    
+                    // Generate HTML for each token
+                    for (const balance of sortedBalances) {
+                        // Different formatting for different types of tokens
+                        let decimals = 2; // Default for most tokens
+                        
+                        if (balance.token_symbol === 'ETH' || balance.token_symbol === 'WETH') {
+                            decimals = 6; // More decimals for ETH and WETH
+                        }
+                        
+                        // Ensure balance is a number
+                        let balanceValue = typeof balance.balance === 'number' ? balance.balance : 0;
+                        
+                        balanceHtml += `
+                            <div>
+                                <span class="text-gray-300">${balance.token_symbol}:</span>
+                                <span class="font-medium text-white balance-item" id="token-${balance.token_symbol}-${wallet.id}">${balanceValue.toFixed(decimals)}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    balanceHtml += '</div>'; // Close the grid div
+                } else {
+                    // TRON wallet - use balances array like ETH
+                    if (wallet.balances && wallet.balances.length > 0) {
+                        balanceHtml = '<div class="grid grid-cols-2 gap-4 text-sm">';
+                        
+                        for (const balance of wallet.balances) {
+                            let decimals = balance.token_symbol === 'TRX' ? 6 : 2;
+                            // Ensure balance is a number
+                            let balanceValue = typeof balance.balance === 'number' ? balance.balance : 0;
+                            balanceHtml += `
+                                <div>
+                                    <span class="text-gray-300">${balance.token_symbol}:</span>
+                                    <span class="font-medium text-white balance-item" id="${balance.token_symbol.toLowerCase()}-${wallet.id}">${balanceValue.toFixed(decimals)}</span>
+                                </div>
+                            `;
+                        }
+                        
+                        balanceHtml += '</div>';
+                    } else {
+                        // Fallback for old format
+                        balanceHtml = `
+                            <div class="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <span class="text-gray-300">TRX:</span>
+                                    <span class="font-medium text-white balance-item" id="trx-${wallet.id}">${(wallet.current_trx_balance || 0).toFixed(6)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-300">USDT:</span>
+                                    <span class="font-medium text-white balance-item" id="usdt-${wallet.id}">${(wallet.current_usdt_balance || 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                walletElement.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="font-medium text-white">${wallet.name || 'Unnamed Wallet'}</h3>
+                            <p class="text-sm text-gray-300 font-mono">${this.truncateAddress(wallet.address)}</p>
+                            <span class="inline-block px-2 py-1 text-xs font-semibold ${wallet.blockchain.name === 'ETH' ? 'bg-blue-600 text-blue-100' : 'bg-red-600 text-red-100'} rounded-full mt-1">
+                                ${wallet.blockchain.name}
+                            </span>
+                        </div>
+                        <button 
+                            class="remove-wallet-btn text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded transition-colors bg-red-900 hover:bg-red-800"
+                            data-wallet-id="${wallet.id}"
+                            title="Remove wallet"
+                        >
+                            Remove
+                        </button>
+                    </div>
+                    ${balanceHtml}
+                `;
+                
+                const walletsList = document.getElementById('walletsList');
+                console.log('WalletsList element:', walletsList);
+                walletsList.appendChild(walletElement);
+                console.log('Wallet element added to DOM');
+                
+                // Update transaction filter
+                this.updateTransactionFilter();
+            }
+
+            updateWalletBalance(data) {
+                const wallet = this.wallets.get(data.wallet_id);
+                if (wallet) {
+                    if (data.blockchain === 'ETH') {
+                        // Dynamic token balances
+                        if (data.token_balances) {
+                            // Update or add tokens to balances array (only legitimate tokens)
+                            for (const [token, balance] of Object.entries(data.token_balances)) {
+                                // Skip scam tokens
+                                if (!this.isLegitimateToken(token)) {
+                                    continue;
+                                }
+                                
+                                // Look for existing token in balances
+                                let existingTokenIndex = wallet.balances.findIndex(b => b.token_symbol === token);
+                                
+                                if (existingTokenIndex >= 0) {
+                                    // Update existing token
+                                    wallet.balances[existingTokenIndex].balance = balance;
+                                } else {
+                                    // Add new token
+                                    wallet.balances.push({
+                                        token_symbol: token,
+                                        balance: balance
+                                    });
+                                }
+                                
+                                // Update DOM element
+                                const tokenElement = document.getElementById(`token-${token}-${data.wallet_id}`);
+                                if (tokenElement) {
+                                    // Format with appropriate decimals
+                                    const decimals = (token === 'ETH' || token === 'WETH') ? 6 : 2;
+                                    tokenElement.textContent = balance.toFixed(decimals);
+                                }
+                            }
+                        }
+                    } else {
+                        // Update TRON wallet balances - both new and old format
+                        if (wallet.balances && Array.isArray(wallet.balances)) {
+                            // New format - update balances array
+                            if (data.trx_balance !== undefined) {
+                                let trxIndex = wallet.balances.findIndex(b => b.token_symbol === 'TRX');
+                                if (trxIndex >= 0) {
+                                    wallet.balances[trxIndex].balance = data.trx_balance;
+                                } else {
+                                    wallet.balances.push({token_symbol: 'TRX', balance: data.trx_balance});
+                                }
+                            }
+                            
+                            if (data.usdt_balance !== undefined) {
+                                let usdtIndex = wallet.balances.findIndex(b => b.token_symbol === 'USDT');
+                                if (usdtIndex >= 0) {
+                                    wallet.balances[usdtIndex].balance = data.usdt_balance;
+                                } else {
+                                    wallet.balances.push({token_symbol: 'USDT', balance: data.usdt_balance});
+                                }
+                            }
+                        }
+                        
+                        // Update legacy properties for backward compatibility
+                        wallet.current_trx_balance = data.trx_balance;
+                        wallet.current_usdt_balance = data.usdt_balance;
+                        
+                        // Update DOM elements
+                        const trxElement = document.getElementById(`trx-${data.wallet_id}`);
+                        const usdtElement = document.getElementById(`usdt-${data.wallet_id}`);
+                        
+                        if (trxElement) trxElement.textContent = data.trx_balance.toFixed(6);
+                        if (usdtElement) usdtElement.textContent = data.usdt_balance.toFixed(2);
+                        
+                        console.log(`Updated TRON wallet ${data.wallet_id}: TRX=${data.trx_balance}, USDT=${data.usdt_balance}`);
+                    }
+                }
+            }
+
+            removeWalletFromList(walletId) {
+                this.wallets.delete(walletId);
+                const element = document.getElementById(`wallet-${walletId}`);
+                if (element) {
+                    element.remove();
+                }
+                
+                // Update transaction filter
+                this.updateTransactionFilter();
+            }
+
+            async addWallet() {
+                const form = document.getElementById('addWalletForm');
+                const formData = new FormData(form);
+                const button = document.getElementById('addWalletBtn');
+                
+                button.disabled = true;
+                button.textContent = 'Adding...';
+                
+                try {
+                    const response = await fetch('/api/wallets', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            address: formData.get('address'),
+                            name: formData.get('name') || null,
+                            blockchain: formData.get('blockchain') || 'TRON'
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        form.reset();
+                        this.showSuccess('Wallet added successfully');
+                        // Reload transactions after adding new wallet
+                        setTimeout(() => this.loadTransactions(), 2000);
+                    } else {
+                        const error = await response.json();
+                        this.showError(error.detail || 'Failed to add wallet');
+                    }
+                } catch (error) {
+                    this.showError('Failed to add wallet');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = 'Add Wallet';
+                }
+            }
+
+            async removeWallet(walletId) {
+                if (!confirm('Are you sure you want to remove this wallet?')) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/api/wallets/${walletId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        this.showSuccess('Wallet removed successfully');
+                    } else {
+                        this.showError('Failed to remove wallet');
+                    }
+                } catch (error) {
+                    this.showError('Failed to remove wallet');
+                }
+            }
+
+            async loadTransactions() {
+                try {
+                    const response = await fetch('/api/transactions?limit=50');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const transactions = await response.json();
+                    
+                    // Ensure we have an array
+                    const transactionsArray = Array.isArray(transactions) ? transactions : [];
+                    
+                    this.transactions = transactionsArray;
+                    this.displayTransactions(transactionsArray);
+                    
+                    console.log('Transactions loaded:', transactionsArray.length);
+                } catch (error) {
+                    console.error('Failed to load transactions:', error);
+                    // Set empty array on error to prevent map() issues
+                    this.transactions = [];
+                    this.displayTransactions([]);
+                    this.showError('Failed to load transactions');
+                }
+            }
+
+            displayTransactions(transactions) {
+                const tbody = document.getElementById('transactionsList');
+                
+                // More aggressive debouncing to prevent flickering
+                if (this.displayTransactionsTimeout) {
+                    clearTimeout(this.displayTransactionsTimeout);
+                }
+                
+                this.displayTransactionsTimeout = setTimeout(() => {
+                    this._updateTransactionsTable(tbody, transactions);
+                }, 500); // Increased from 300ms to 500ms
+            }
+            
+            _updateTransactionsTable(tbody, transactions) {
+                // Ensure transactions is an array
+                if (!Array.isArray(transactions) || transactions.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                No transactions found
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                // Use requestAnimationFrame for smoother updates
+                requestAnimationFrame(() => {
+                    // Add updating class for smooth transition
+                    tbody.classList.add('updating');
+                    
+                    // Use a longer delay for more stable rendering
+                    setTimeout(() => {
+                        const currentRowCount = tbody.children.length;
+                        const newRowsHtml = transactions.map(tx => {
+                            const timeAgo = this.formatTimeAgo(tx.timestamp);
+                            const blockchain = tx.blockchain || 'TRON';
+                            
+                            // Determine transaction type and color
+                            let txType, typeColor;
+                            if (blockchain === 'ETH') {
+                                txType = tx.type || 'ETH';
+                                if (txType === 'ETH') {
+                                    typeColor = 'bg-blue-100 text-blue-800';
+                                } else if (txType === 'USDT' || txType === 'USDC' || txType === 'DAI') {
+                                    typeColor = 'bg-green-100 text-green-800';
+                                } else if (txType === 'WETH') {
+                                    typeColor = 'bg-purple-100 text-purple-800';
+                                } else {
+                                    typeColor = 'bg-gray-100 text-gray-800';
+                                }
+                            } else {
+                                txType = tx.type === 'TRX' ? 'TRX' : 'USDT';
+                                typeColor = tx.type === 'TRX' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
+                            }
+                            
+                            const statusColor = tx.status === 'Success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                            const shortHash = tx.hash ? `${tx.hash.slice(0, 8)}...${tx.hash.slice(-8)}` : 'N/A';
+                            
+                            // Determine direction and colors
+                            let direction = '→ TRANSFER';
+                            let directionColor = 'bg-blue-100 text-blue-800';
+                            
+                            // Get current user's wallet addresses for direction determination
+                            const currentWalletAddresses = Array.from(this.wallets.values()).map(w => w.address ? w.address.toLowerCase() : '');
+                            const fromAddress = tx.from ? tx.from.toLowerCase() : '';
+                            const toAddress = tx.to ? tx.to.toLowerCase() : '';
+                            
+                            // More robust direction detection
+                            const isIncoming = currentWalletAddresses.some(addr => addr && addr === toAddress);
+                            const isOutgoing = currentWalletAddresses.some(addr => addr && addr === fromAddress);
+                            
+                            if (isIncoming && !isOutgoing) {
+                                direction = '↓ IN';
+                                directionColor = 'bg-green-100 text-green-800 transaction-in';
+                            } else if (isOutgoing && !isIncoming) {
+                                direction = '↑ OUT';
+                                directionColor = 'bg-red-100 text-red-800 transaction-out';
+                            } else if (isIncoming && isOutgoing) {
+                                direction = '↔ SELF';
+                                directionColor = 'bg-yellow-100 text-yellow-800';
+                            }
+                            
+                            // Format addresses better
+                            const shortFrom = tx.from && tx.from.length > 20 ? `${tx.from.slice(0, 6)}...${tx.from.slice(-4)}` : tx.from || 'N/A';
+                            const shortTo = tx.to && tx.to.length > 20 ? `${tx.to.slice(0, 6)}...${tx.to.slice(-4)}` : tx.to || 'N/A';
+                            
+                            // Format amount better
+                            const decimals = (txType === 'TRX' || txType === 'ETH' || txType === 'WETH') ? 6 : 2;
+                            const formattedAmount = tx.amount > 0 ? tx.amount.toFixed(decimals) : '0.00';
+
+                            // Determine explorer URL
+                            const explorerUrl = blockchain === 'ETH' 
+                                ? `https://etherscan.io/tx/${tx.hash}`
+                                : `https://tronscan.org/#/transaction/${tx.hash}`;
+
+                            return `
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" data-tx-hash="${tx.hash}">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${directionColor}">
+                                            ${direction}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex flex-col space-y-1">
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${typeColor}">
+                                                ${txType}
+                                            </span>
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${blockchain === 'ETH' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}">
+                                                ${blockchain}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">
+                                        ${formattedAmount} ${txType}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                        <div class="text-xs space-y-1">
+                                            <div title="${tx.from}">From: <span class="font-mono">${shortFrom}</span></div>
+                                            <div title="${tx.to}">To: <span class="font-mono">${shortTo}</span></div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                        <div class="text-xs">
+                                            <div>${timeAgo}</div>
+                                            <div class="text-gray-500">Block: ${tx.block || 'N/A'}</div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColor}">
+                                            ${tx.status}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-400 hover:text-blue-300">
+                                        <a href="${explorerUrl}" target="_blank" class="hover:underline font-mono transition-colors" title="${tx.hash}">
+                                            ${shortHash}
+                                        </a>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
+                        
+                        // Only update if content actually changed to prevent unnecessary DOM manipulation
+                        const newContent = newRowsHtml;
+                        if (tbody.innerHTML !== newContent) {
+                            tbody.innerHTML = newContent;
+                        }
+                        
+                        // Remove updating class
+                        tbody.classList.remove('updating');
+                        
+                    }, 100); // Shorter internal delay for responsiveness
+                });
+            }
+
+            filterTransactions(walletId) {
+                if (!walletId) {
+                    this.displayTransactions(this.transactions);
+                    return;
+                }
+
+                const filteredTransactions = this.transactions.filter(tx => 
+                    tx.wallet_address && tx.wallet_address.includes(walletId)
+                );
+                
+                this.displayTransactions(filteredTransactions);
+            }
+
+            formatTimeAgo(timestamp) {
+                if (!timestamp) return 'Unknown';
+                
+                const now = Date.now();
+                const txTime = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+                const diffMs = now - txTime;
+                const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                const diffHours = Math.floor(diffMinutes / 60);
+                const diffDays = Math.floor(diffHours / 24);
+
+                if (diffMinutes < 1) return 'Just now';
+                if (diffMinutes < 60) return `${diffMinutes}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                if (diffDays < 7) return `${diffDays}d ago`;
+                
+                return new Date(txTime).toLocaleDateString();
+            }
+
+            updateTransactionFilter() {
+                const filterSelect = document.getElementById('transactionWalletFilter');
+                filterSelect.innerHTML = '<option value="">All Wallets</option>';
+                
+                for (const [id, wallet] of this.wallets) {
+                    const option = document.createElement('option');
+                    option.value = wallet.address;
+                    option.textContent = wallet.name || wallet.address.slice(0, 10) + '...';
+                    filterSelect.appendChild(option);
+                }
+            }
+
+            truncateAddress(address) {
+                if (!address || address.length <= 12) return address;
+                return `${address.slice(0, 6)}...${address.slice(-6)}`;
+            }
+
+            isLegitimateToken(tokenSymbol) {
+                // Null/undefined check
+                if (!tokenSymbol || typeof tokenSymbol !== 'string') {
+                    console.warn('Invalid token symbol:', tokenSymbol);
+                    return false;
+                }
+                
+                // Filter out scam tokens that use Unicode tricks to look like legitimate tokens
+                
+                // Check for suspicious Unicode characters
+                const suspiciousPatterns = [
+                    /[\u2060-\u206F]/g,  // Word joiner, zero-width space, etc.
+                    /[\u200B-\u200D]/g,  // Zero-width space, ZWNJ, ZWJ
+                    /[\u2062-\u2064]/g,  // Invisible times, separator, plus
+                    /[\uFEFF]/g,         // Zero-width no-break space (BOM)
+                    /[\u061C]/g,         // Arabic letter mark
+                    /[\u180E]/g,         // Mongolian vowel separator
+                ];
+                
+                // Check if token contains suspicious Unicode characters
+                for (const pattern of suspiciousPatterns) {
+                    if (pattern.test(tokenSymbol)) {
+                        console.log(`Filtering out scam token with Unicode tricks: "${tokenSymbol}"`);
+                        return false;
+                    }
+                }
+                
+                // Check for common scam token patterns
+                const scamPatterns = [
+                    // Cyrillic letters that look like Latin
+                    /[АВСДЕНКМОРТХУаосрехуе]/,
+                    // Multiple consecutive special characters
+                    /[^\w\s]{2,}/,
+                    // Extremely long token names (likely scam)
+                    /^.{20,}$/
+                ];
+                
+                for (const pattern of scamPatterns) {
+                    if (pattern.test(tokenSymbol)) {
+                        console.log(`Filtering out scam token with suspicious pattern: "${tokenSymbol}"`);
+                        return false;
+                    }
+                }
+                
+                // Whitelist of known legitimate tokens (case-insensitive)
+                const legitimateTokens = [
+                    'ETH', 'WETH', 'USDT', 'USDC', 'DAI', 'BUSD', 'UNI', 'LINK', 'AAVE', 'COMP',
+                    'MKR', 'CRV', 'SNX', 'YFI', 'SUSHI', '1INCH', 'BAT', 'ZRX', 'ENJ', 'MANA',
+                    'SAND', 'AXS', 'SHIB', 'PEPE', 'DOGE', 'MATIC', 'FTM', 'AVAX', 'BNB',
+                    'ADA', 'DOT', 'SOL', 'ATOM', 'NEAR', 'FIL', 'ICP', 'VET', 'ALGO', 'XTZ',
+                    'EGLD', 'HBAR', 'FLOW', 'CHZ', 'THETA', 'KLAY', 'HEX', 'LRC', 'GRT', 'FEI',
+                    'FRAX', 'LUSD', 'RAI', 'TRIBE', 'TUSD', 'PAXG', 'WBTC', 'RENBTC', 'HBTC'
+                ];
+                
+                // Check against whitelist (case-insensitive)
+                const upperToken = tokenSymbol.toUpperCase();
+                if (legitimateTokens.includes(upperToken)) {
+                    return true;
+                }
+                
+                // Additional checks for potentially legitimate tokens
+                // Allow if it's a simple alphanumeric token (3-10 chars) without suspicious patterns
+                if (/^[A-Z0-9]{2,10}$/i.test(tokenSymbol)) {
+                    // Still check for obvious scams like multiple of the same letter
+                    if (!/(.)\1{3,}/.test(tokenSymbol)) {
+                        return true;
+                    }
+                }
+                
+                // If we get here, it's likely a scam token
+                console.log(`Filtering out potential scam token: "${tokenSymbol}"`);
+                return false;
+            }
+
+            updateLastUpdated() {
+                const now = new Date();
+                document.getElementById('lastUpdated').textContent = now.toLocaleTimeString();
+            }
+
+            showError(message) {
+                this.showNotification(message, 'error');
+            }
+
+            showSuccess(message) {
+                this.showNotification(message, 'success');
+            }
+
+            showTransactionNotification(data) {
+                const { transaction, message } = data;
+                
+                // Show browser notification if permission granted
+                if (Notification.permission === 'granted') {
+                    new Notification('WalletTrack - New Transaction', {
+                        body: message,
+                        icon: '/favicon.ico'
+                    });
+                }
+                
+                // Show in-app notification
+                this.showNotification(message, 'success');
+                
+                // Add visual indicator to wallet if visible
+                const walletElement = document.querySelector(`[data-wallet-id="${transaction.wallet_id}"]`);
+                if (walletElement) {
+                    walletElement.classList.add('ring-2', 'ring-green-500', 'ring-opacity-50');
+                    setTimeout(() => {
+                        walletElement.classList.remove('ring-2', 'ring-green-500', 'ring-opacity-50');
+                    }, 3000);
+                }
+            }
+
+            updateTransactionCounter() {
+                // Count current transactions in the table
+                const transactionsList = document.getElementById('transactionsList');
+                if (transactionsList) {
+                    const transactionCount = transactionsList.children.length;
+                    const countBadge = document.getElementById('transaction-count-badge');
+                    if (countBadge) {
+                        countBadge.textContent = transactionCount;
+                    }
+                }
+            }
+
+            handleTransactionsUpdate(data) {
+                console.log(`Transactions update: ${data.transaction_count} transactions available`);
+                
+                // Update transaction count badge if it exists
+                const countBadge = document.getElementById('transaction-count-badge');
+                if (countBadge) {
+                    countBadge.textContent = data.transaction_count;
+                    countBadge.classList.add('animate-pulse');
+                    setTimeout(() => countBadge.classList.remove('animate-pulse'), 2000);
+                }
+                
+                // Enhanced debouncing for transaction updates
+                if (this.transactionUpdateTimeout) {
+                    clearTimeout(this.transactionUpdateTimeout);
+                }
+                
+                this.transactionUpdateTimeout = setTimeout(() => {
+                    // If currently viewing transactions, refresh the list
+                    if (this.currentView === 'transactions') {
+                        this.loadTransactions();
+                    }
+                    this.transactionUpdateTimeout = null;
+                }, 800); // Increased delay to prevent frequent refreshes
+            }
+
+            handleWalletTransactionsUpdate(data) {
+                console.log(`Wallet ${data.wallet_address} transactions update: ${data.transaction_count} transactions`);
+                
+                // Show notification for specific wallet
+                this.showNotification(`New transactions for ${data.blockchain} wallet: ${data.wallet_address}`, 'info');
+                
+                // If currently viewing this wallet's transactions, refresh
+                if (this.currentView === 'wallet-transactions' && this.selectedWalletId === data.wallet_id) {
+                    this.fetchWalletTransactions(data.wallet_id);
+                }
+            }
+
+            handleNewTransactions(data) {
+                console.log(`${data.count} new transactions detected`);
+                
+                // Show notification for new transactions
+                if (data.count > 0) {
+                    this.showNotification(`${data.count} new transactions detected!`, 'success');
+                    
+                    // Enhanced debouncing for new transactions
+                    if (this.newTransactionsTimeout) {
+                        clearTimeout(this.newTransactionsTimeout);
+                    }
+                    
+                    this.newTransactionsTimeout = setTimeout(() => {
+                        // Add new transactions to current list if viewing transactions
+                        if (this.currentView === 'transactions') {
+                            data.transactions.forEach(tx => {
+                                this.addNewTransaction(tx);
+                            });
+                        }
+                        this.newTransactionsTimeout = null;
+                    }, 600); // Add significant delay to prevent rapid updates
+                }
+            }
+
+            // Request notification permission on load
+            requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }
+
+            // Enhanced notification system
+            showNotification(message, type = 'info') {
+                const notification = document.createElement('div');
+                notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 max-w-sm transform transition-all duration-300 translate-x-full`;
+                
+                // Set colors based on type
+                switch(type) {
+                    case 'success':
+                        notification.className += ' bg-green-500 text-white';
+                        break;
+                    case 'error':
+                        notification.className += ' bg-red-500 text-white';
+                        break;
+                    case 'warning':
+                        notification.className += ' bg-yellow-500 text-black';
+                        break;
+                    default:
+                        notification.className += ' bg-blue-500 text-white';
+                }
+                
+                notification.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span>${message}</span>
+                        <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-lg">&times;</button>
+                    </div>
+                `;
+                
+                document.body.appendChild(notification);
+                
+                // Animate in
+                setTimeout(() => {
+                    notification.classList.remove('translate-x-full');
+                }, 100);
+                
+                // Auto remove after 5 seconds
+                setTimeout(() => {
+                    notification.classList.add('translate-x-full');
+                    setTimeout(() => notification.remove(), 300);
+                }, 5000);
+            }
+
+            // Send WebSocket ping periodically
+            startHeartbeat() {
+                setInterval(() => {
+                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                        this.websocket.send(JSON.stringify({ type: 'ping' }));
+                    }
+                }, 30000); // Every 30 seconds
+            }
+
+            startPeriodicUpdates() {
+                // Refresh data every 30 seconds
+                setInterval(() => {
+                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                        console.log('Requesting periodic data refresh...');
+                        this.loadWallets(); // Refresh wallet balances
+                        this.loadTransactions(); // Refresh transactions
+                        
+                        // Send a ping to keep connection alive
+                        this.websocket.send(JSON.stringify({
+                            type: 'ping',
+                            timestamp: Date.now()
+                        }));
+                    }
+                }, 30000); // 30 seconds
+                
+                // More frequent transaction updates
+                setInterval(() => {
+                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                        this.loadTransactions();
+                    }
+                }, 15000); // 15 seconds for transactions
+            }
+
+            updateTronBalance(data) {
+                console.log('Processing TRON balance update:', data);
+                
+                // Find wallet by address
+                let walletId = null;
+                for (const [id, wallet] of this.wallets) {
+                    if (wallet.address === data.address) {
+                        walletId = id;
+                        break;
+                    }
+                }
+                
+                if (walletId) {
+                    const wallet = this.wallets.get(walletId);
+                    
+                    // Update balances array
+                    if (data.trx_balance !== undefined) {
+                        let trxIndex = wallet.balances.findIndex(b => b.token_symbol === 'TRX');
+                        if (trxIndex >= 0) {
+                            wallet.balances[trxIndex].balance = data.trx_balance;
+                        } else {
+                            wallet.balances.push({token_symbol: 'TRX', balance: data.trx_balance});
+                        }
+                        
+                        // Update DOM
+                        const trxElement = document.getElementById(`trx-${walletId}`);
+                        if (trxElement) {
+                            trxElement.textContent = data.trx_balance.toFixed(6);
+                        }
+                    }
+                    
+                    if (data.usdt_balance !== undefined) {
+                        let usdtIndex = wallet.balances.findIndex(b => b.token_symbol === 'USDT');
+                        if (usdtIndex >= 0) {
+                            wallet.balances[usdtIndex].balance = data.usdt_balance;
+                        } else {
+                            wallet.balances.push({token_symbol: 'USDT', balance: data.usdt_balance});
+                        }
+                        
+                        // Update DOM
+                        const usdtElement = document.getElementById(`usdt-${walletId}`);
+                        if (usdtElement) {
+                            usdtElement.textContent = data.usdt_balance.toFixed(2);
+                        }
+                    }
+                    
+                    // Update legacy properties
+                    wallet.current_trx_balance = data.trx_balance;
+                    wallet.current_usdt_balance = data.usdt_balance;
+                    
+                    // Add visual feedback
+                    const walletCard = document.getElementById(`wallet-${walletId}`);
+                    if (walletCard) {
+                        walletCard.classList.add('updated');
+                        setTimeout(() => walletCard.classList.remove('updated'), 2000);
+                    }
+                    
+                    console.log(`TRON balance updated for wallet ${walletId}: TRX=${data.trx_balance}, USDT=${data.usdt_balance}`);
+                } else {
+                    console.warn('Could not find TRON wallet with address:', data.address);
+                }
+            }
+
+            updateEthBalance(data) {
+                console.log('Processing ETH balance update:', data);
+                
+                // Find wallet by address
+                let walletId = null;
+                for (const [id, wallet] of this.wallets) {
+                    if (wallet.address === data.address) {
+                        walletId = id;
+                        break;
+                    }
+                }
+                
+                if (walletId) {
+                    const wallet = this.wallets.get(walletId);
+                    
+                    // Handle token balances
+                    if (data.token_balances) {
+                        for (const [token, balance] of Object.entries(data.token_balances)) {
+                            if (!this.isLegitimateToken(token)) {
+                                continue;
+                            }
+                            
+                            let existingTokenIndex = wallet.balances.findIndex(b => b.token_symbol === token);
+                            
+                            if (existingTokenIndex >= 0) {
+                                wallet.balances[existingTokenIndex].balance = balance;
+                            } else {
+                                wallet.balances.push({
+                                    token_symbol: token,
+                                    balance: balance
+                                });
+                            }
+                            
+                            // Update DOM
+                            const tokenElement = document.getElementById(`token-${token}-${walletId}`);
+                            if (tokenElement) {
+                                const decimals = (token === 'ETH' || token === 'WETH') ? 6 : 2;
+                                tokenElement.textContent = balance.toFixed(decimals);
+                            }
+                        }
+                    }
+                    
+                    // Add visual feedback
+                    const walletCard = document.getElementById(`wallet-${walletId}`);
+                    if (walletCard) {
+                        walletCard.classList.add('updated');
+                        setTimeout(() => walletCard.classList.remove('updated'), 2000);
+                    }
+                    
+                    console.log(`ETH balance updated for wallet ${walletId}`);
+                } else {
+                    console.warn('Could not find ETH wallet with address:', data.address);
+                }
+            }
+
+            handleTronTransaction(data) {
+                console.log('Processing TRON transaction:', data);
+                this.addNewTransaction(data);
+                this.showNotification(`New TRON transaction: ${data.amount} ${data.token_symbol}`, 'info');
+            }
+
+            handleEthTransaction(data) {
+                console.log('Processing ETH transaction:', data);
+                this.addNewTransaction(data);
+                this.showNotification(`New ETH transaction: ${data.amount} ${data.token_symbol}`, 'info');
+            }
+
+            // Update Network Token Balance Table
+            updateNetworkTokenTable() {
+                const tableBody = document.getElementById('networkTokenTable');
+                if (!tableBody) return;
+
+                // Clear existing rows
+                tableBody.innerHTML = '';
+
+                // Check if wallets exist
+                if (!this.wallets || this.wallets.size === 0) {
+                    return;
+                }
+
+                // Aggregate balances by network and token
+                const aggregatedBalances = {};
+                
+                this.wallets.forEach(wallet => {
+                    // Defensive check for wallet structure
+                    if (!wallet || !wallet.blockchain || !wallet.blockchain.name) {
+                        return;
+                    }
+                    
+                    const network = wallet.blockchain.name;
+                    
+                    // Check if balances exist and is an array
+                    if (wallet.balances && Array.isArray(wallet.balances)) {
+                        wallet.balances.forEach(balance => {
+                            const key = `${network}_${balance.token_symbol}`;
+                            
+                            if (!aggregatedBalances[key]) {
+                                aggregatedBalances[key] = {
+                                    network: network,
+                                    token: balance.token_symbol,
+                                    balance: 0,
+                                    change24h: 0,
+                                    walletCount: 0
+                                };
+                            }
+                            
+                            aggregatedBalances[key].balance += balance.balance || 0;
+                            aggregatedBalances[key].walletCount++;
+                        });
+                    }
+                });
+
+                // Create table rows
+                Object.values(aggregatedBalances).forEach(item => {
+                    const row = document.createElement('tr');
+                    
+                    // Generate random 24h change for demo (in production, this would come from API)
+                    const change24h = (Math.random() - 0.5) * 10; // Random change between -5% and +5%
+                    const changeClass = change24h >= 0 ? 'balance-positive' : 'balance-negative';
+                    const changeSymbol = change24h >= 0 ? '+' : '';
+                    
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                ${item.network}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${item.token}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-white">
+                            ${item.balance.toFixed(6)}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${changeClass}">
+                            ${changeSymbol}${change24h.toFixed(2)}%
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Active (${item.walletCount} wallets)
+                            </span>
+                        </td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+            }
+
+            // Override the existing updateWalletBalance to also update token table
+            updateWalletBalance(data) {
+                console.log('Updating wallet balance:', data);
+                
+                const walletElement = document.querySelector(`[data-wallet-id="${data.wallet_id}"]`);
+                if (walletElement) {
+                    // Find the specific balance element
+                    const balanceElements = walletElement.querySelectorAll('.balance-item');
+                    
+                    balanceElements.forEach(element => {
+                        const tokenSymbol = element.textContent.split(':')[0].trim();
+                        
+                        if ((tokenSymbol === 'TRX' && data.trx_balance !== undefined) ||
+                            (tokenSymbol === 'ETH' && data.eth_balance !== undefined)) {
+                            const newBalance = data.trx_balance || data.eth_balance;
+                            const currentBalance = parseFloat(element.textContent.split(':')[1].trim());
+                            
+                            element.textContent = `${tokenSymbol}: ${newBalance.toFixed(6)}`;
+                            
+                            // Add visual update effect
+                            element.classList.add('updated');
+                            setTimeout(() => element.classList.remove('updated'), 3000);
+                            
+                            // Update wallet card effect
+                            walletElement.classList.add('updated');
+                            setTimeout(() => walletElement.classList.remove('updated'), 3000);
+                        }
+                        
+                        if (tokenSymbol === 'USDT' && data.usdt_balance !== undefined) {
+                            const newBalance = data.usdt_balance;
+                            element.textContent = `USDT: ${newBalance.toFixed(2)}`;
+                            
+                            element.classList.add('updated');
+                            setTimeout(() => element.classList.remove('updated'), 3000);
+                            
+                            walletElement.classList.add('updated');
+                            setTimeout(() => walletElement.classList.remove('updated'), 3000);
+                        }
+                    });
+                    
+                    // Update the network token table
+                    this.updateNetworkTokenTable();
+                }
+            }
+
+            // ...existing code...
+        }
+
+        // Initialize the wallet monitor
+        window.addEventListener('load', () => {
+            console.log('DOM and all resources loaded');
+            console.log('WalletsList element exists:', !!document.getElementById('walletsList'));
+            const walletMonitor = new WalletMonitor();
+            window.walletMonitor = walletMonitor; // Make it globally accessible
+        });
+    </script>
+</body>
+</html>
