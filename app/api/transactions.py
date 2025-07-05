@@ -22,7 +22,15 @@ async def get_all_transactions(
     db: AsyncSession = Depends(get_db)
 ):
     """Get recent transactions from all wallets within specified hours"""
-    return await transaction_service.get_all_transactions(db, limit, hours)
+    logger.info(f"API: Getting transactions with limit={limit}, hours={hours}")
+    result = await transaction_service.get_all_transactions(db, limit, hours)
+    
+    # Debug: Count ETH vs TRON transactions
+    eth_count = len([tx for tx in result if tx.get('blockchain') == 'ETH'])
+    tron_count = len([tx for tx in result if tx.get('blockchain') == 'TRON'])
+    logger.info(f"API: Returning {len(result)} transactions: {eth_count} ETH, {tron_count} TRON")
+    
+    return result
 
 @router.get("/transactions/live")
 async def get_live_transactions(

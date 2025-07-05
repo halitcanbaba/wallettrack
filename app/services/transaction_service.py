@@ -44,20 +44,39 @@ class TransactionService:
                     transactions = []
                     
                     if wallet.blockchain_ref.name == "ETH":
-                        logger.info(f"Getting transactions for ETH wallet: {wallet.address}")
-                        transactions = await eth_service.get_wallet_transactions(wallet.address, wallet_limit)
+                        logger.info(f"Getting transactions for ETH wallet: {wallet.address} (last {hours}h)")
+                        # Use time-based filtering for ETH transactions
+                        transactions = await eth_service.get_wallet_transactions_since(wallet.address, hours, wallet_limit)
                     elif wallet.blockchain_ref.name == "TRON":
                         logger.info(f"Getting transactions for TRON wallet: {wallet.address} (last {hours}h)")
                         transactions = await tron_service.get_wallet_transactions(wallet.address, wallet_limit, hours)
                     
                     logger.info(f"Got {len(transactions)} transactions for wallet {wallet.address}")
                     
+                    # Debug: Log transaction details for ETH
+                    if wallet.blockchain_ref.name == "ETH":
+                        logger.info(f"ETH wallet {wallet.address}: Processing {len(transactions)} transactions")
+                        if transactions:
+                            sample_tx = transactions[0]
+                            logger.info(f"ETH sample tx: amount={sample_tx.get('amount', 0)}, "
+                                      f"timestamp={sample_tx.get('timestamp', 0)}, "
+                                      f"cutoff={cutoff_timestamp}")
+                    
                     # Filter transactions by time and amount
+                    filtered_count = 0
                     for tx in transactions:
                         # Skip transactions with zero or very small amounts
                         amount = tx.get('amount', 0)
-                        if not isinstance(amount, (int, float)) or amount <= DUST_FILTER_THRESHOLD:
-                            continue
+                        
+                        # More lenient filtering for ETH - include zero amount transactions for contract interactions
+                        if wallet.blockchain_ref.name == "ETH":
+                            # For ETH, include transactions with amount >= 0 (including contract interactions)
+                            if not isinstance(amount, (int, float)) or amount < 0:
+                                continue
+                        else:
+                            # For other blockchains, apply dust filter
+                            if not isinstance(amount, (int, float)) or amount <= DUST_FILTER_THRESHOLD:
+                                continue
                         
                         # Check if transaction is recent enough
                         tx_timestamp = tx.get('timestamp', 0)
@@ -82,6 +101,23 @@ class TransactionService:
                             # Ensure timestamp is in seconds for frontend
                             tx["timestamp"] = tx_timestamp
                             all_transactions.append(tx)
+                            filtered_count += 1
+                            
+                            # Debug: Log ETH transactions being added
+                            if wallet.blockchain_ref.name == "ETH":
+                                logger.info(f"ETH TX ADDED: hash={tx.get('hash', '')[:10]}..., "
+                                          f"amount={amount}, timestamp={tx_timestamp}, "
+                                          f"total_so_far={len(all_transactions)}")
+                        else:
+                            # Debug: Log why ETH transactions are filtered out
+                            if wallet.blockchain_ref.name == "ETH":
+                                logger.info(f"ETH TX FILTERED OUT: hash={tx.get('hash', '')[:10]}..., "
+                                          f"timestamp={tx_timestamp}, cutoff={cutoff_timestamp}, "
+                                          f"diff={(tx_timestamp - cutoff_timestamp)/3600:.2f}h")
+                    
+                    # Debug for ETH transactions
+                    if wallet.blockchain_ref.name == "ETH":
+                        logger.info(f"ETH wallet {wallet.address}: {filtered_count} transactions passed filtering")
                             
                 except Exception as e:
                     logger.error(f"Error getting transactions for wallet {wallet.id}: {e}")
@@ -90,8 +126,19 @@ class TransactionService:
             # Sort all transactions by timestamp (newest first)
             all_transactions.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
             
+            # Debug: Show breakdown before limiting
+            eth_total = len([tx for tx in all_transactions if tx.get('blockchain') == 'ETH'])
+            tron_total = len([tx for tx in all_transactions if tx.get('blockchain') == 'TRON'])
+            logger.info(f"Before limiting: {eth_total} ETH, {tron_total} TRON, total: {len(all_transactions)}")
+            
             recent_count = len(all_transactions[:limit])
             total_count = len(all_transactions)
+            
+            # Debug: Show breakdown after limiting
+            limited_transactions = all_transactions[:limit]
+            eth_limited = len([tx for tx in limited_transactions if tx.get('blockchain') == 'ETH'])
+            tron_limited = len([tx for tx in limited_transactions if tx.get('blockchain') == 'TRON'])
+            logger.info(f"After limiting to {limit}: {eth_limited} ETH, {tron_limited} TRON")
             
             logger.info(f"Found {total_count} recent transactions (last {hours}h), returning top {recent_count}")
             
@@ -135,7 +182,7 @@ class TransactionService:
                     transactions = []
                     
                     if wallet.blockchain_ref.name == "ETH":
-                        # Use enhanced ETH transaction method with notifications
+                        # Use enhanced ETH transaction method with time filtering
                         transactions = await eth_service.get_recent_transactions_with_notifications(
                             wallet.address, wallet.id, since_timestamp
                         )
@@ -150,9 +197,16 @@ class TransactionService:
                         tx_timestamp = tx.get('timestamp', 0)
                         amount = tx.get('amount', 0)
                         
-                        if (tx_timestamp > since_timestamp and 
-                            isinstance(amount, (int, float)) and 
-                            amount > DUST_FILTER_THRESHOLD):
+                        # More lenient amount filtering for ETH
+                        amount_ok = False
+                        if tx.get('blockchain') == 'ETH':
+                            # For ETH, include all transactions with amount >= 0
+                            amount_ok = isinstance(amount, (int, float)) and amount >= 0
+                        else:
+                            # For other blockchains, apply dust filter
+                            amount_ok = isinstance(amount, (int, float)) and amount > DUST_FILTER_THRESHOLD
+                        
+                        if (tx_timestamp > since_timestamp and amount_ok):
                             
                             tx["wallet_id"] = wallet.id
                             tx["wallet_address"] = wallet.address
@@ -194,6 +248,8 @@ class TransactionService:
     async def get_wallet_transactions(self, db: AsyncSession, wallet_id: int, limit: int = 50):
         """Get recent transactions for a wallet"""
         
+        logger.info(f"Getting transactions for wallet {wallet_id} with limit {limit}")
+        
         # Get wallet info
         result = await db.execute(
             select(Wallet)
@@ -204,22 +260,38 @@ class TransactionService:
         if not wallet:
             raise HTTPException(status_code=404, detail="Wallet not found")
         
+        logger.info(f"Found wallet: {wallet.address} on {wallet.blockchain_ref.name} blockchain")
+        
         try:
             transactions = []
             
             if wallet.blockchain_ref.name == "ETH":
-                # Get transactions from Ethereum service
-                transactions = await eth_service.get_wallet_transactions(wallet.address, limit)
+                # Get transactions from Ethereum service with better time filtering
+                transactions = await eth_service.get_wallet_transactions_since(wallet.address, 24, limit)
+                logger.info(f"ETH service returned {len(transactions)} transactions for wallet {wallet_id}")
             elif wallet.blockchain_ref.name == "TRON":
                 # Get transactions from TRON service
                 transactions = await tron_service.get_wallet_transactions(wallet.address, limit)
+                logger.info(f"TRON service returned {len(transactions)} transactions for wallet {wallet_id}")
             
-            # Filter out zero amount transactions
+            # Filter transactions with more lenient ETH filtering
             filtered_transactions = []
             for tx in transactions:
                 amount = tx.get('amount', 0)
-                if isinstance(amount, (int, float)) and amount > DUST_FILTER_THRESHOLD:
+                
+                # More lenient amount filtering for ETH
+                amount_ok = False
+                if wallet.blockchain_ref.name == 'ETH':
+                    # For ETH, include all transactions with amount >= 0
+                    amount_ok = isinstance(amount, (int, float)) and amount >= 0
+                else:
+                    # For other blockchains, apply dust filter
+                    amount_ok = isinstance(amount, (int, float)) and amount > DUST_FILTER_THRESHOLD
+                
+                if amount_ok:
                     filtered_transactions.append(tx)
+
+            logger.info(f"After filtering: {len(filtered_transactions)} transactions for wallet {wallet_id} ({wallet.blockchain_ref.name})")
             
             # Send WebSocket notification for wallet transactions
             if filtered_transactions:

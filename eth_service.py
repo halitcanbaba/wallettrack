@@ -728,12 +728,15 @@ class EthereumService:
     async def get_recent_transactions_with_notifications(self, address: str, wallet_id: int, since_timestamp: int) -> list:
         """Get recent transactions and send WebSocket notifications for new ones"""
         try:
-            # Get recent transactions
-            transactions = await self.get_wallet_transactions(address, limit=50)
+            # Get recent transactions with better time filtering
+            # Convert timestamp to hours for filtering
+            current_time = int(datetime.utcnow().timestamp())
+            hours_back = max(1, (current_time - since_timestamp) // 3600)  # Convert to hours, minimum 1 hour
+            
+            transactions = await self.get_wallet_transactions_since(address, int(hours_back), 100)
             
             # Filter transactions newer than timestamp
             new_transactions = []
-            current_time = int(datetime.utcnow().timestamp())
             
             for tx in transactions:
                 tx_timestamp = tx.get('timestamp', 0)
@@ -743,6 +746,10 @@ class EthereumService:
                         tx_timestamp = int(datetime.fromisoformat(tx_timestamp.replace('Z', '+00:00')).timestamp())
                     except:
                         tx_timestamp = current_time
+                
+                # Handle millisecond timestamps
+                if tx_timestamp > 10000000000:
+                    tx_timestamp = tx_timestamp // 1000
                 
                 if tx_timestamp > since_timestamp:
                     new_transactions.append(tx)
@@ -852,3 +859,48 @@ class EthereumService:
                     
         except Exception as e:
             logger.error(f"Error creating transaction balance history: {e}")
+    
+    async def get_wallet_transactions_since(self, address: str, hours: int = 24, limit: int = 100) -> List[Dict]:
+        """Get wallet transactions from the last N hours"""
+        from datetime import datetime, timedelta
+        
+        # Calculate cutoff time
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        cutoff_timestamp = int(cutoff_time.timestamp())
+        
+        logger.info(f"Getting ETH transactions for {address} since {cutoff_time.isoformat()} (last {hours}h)")
+        
+        try:
+            # Get more transactions to ensure we catch all within the time window
+            all_transactions = await self.get_wallet_transactions(address, limit * 2)
+            
+            # Filter transactions by time
+            recent_transactions = []
+            for tx in all_transactions:
+                tx_timestamp = tx.get('timestamp', 0)
+                
+                # Handle different timestamp formats
+                if isinstance(tx_timestamp, str):
+                    try:
+                        tx_time = datetime.fromisoformat(tx_timestamp.replace('Z', '+00:00'))
+                        tx_timestamp = int(tx_time.timestamp())
+                    except:
+                        continue
+                
+                # Handle millisecond timestamps
+                if tx_timestamp > 10000000000:
+                    tx_timestamp = tx_timestamp // 1000
+                
+                # Only include transactions from the time window
+                if tx_timestamp >= cutoff_timestamp:
+                    recent_transactions.append(tx)
+            
+            # Sort by timestamp (newest first)
+            recent_transactions.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            
+            logger.info(f"Found {len(recent_transactions)} ETH transactions in last {hours} hours for {address}")
+            return recent_transactions[:limit]
+            
+        except Exception as e:
+            logger.error(f"Error getting recent ETH transactions: {e}")
+            return []
