@@ -45,6 +45,36 @@ class WalletTracker {
         }
     }
 
+    // Debug function to test formatting
+    debugFormatBalance() {
+        console.log('Testing formatBalance function:');
+        const testValues = [15206014.1444, 1192212.0, 46.932658, 2.6, 0.123456];
+        testValues.forEach(val => {
+            console.log(`${val} -> ${this.formatBalance(val, 2)}`);
+        });
+    }
+
+    // Format balance with 2 decimal places and thousand separators
+    formatBalance(balance, decimals = 2) {
+        if (typeof balance !== 'number') {
+            balance = parseFloat(balance) || 0;
+        }
+        
+        // Format with specified decimal places and add thousand separators
+        return balance.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        });
+    }
+
+    // Get appropriate decimal places for token
+    getTokenDecimals(tokenSymbol) {
+        if (tokenSymbol === 'ETH' || tokenSymbol === 'WETH' || tokenSymbol === 'TRX') {
+            return 6; // More decimals for main coins
+        }
+        return 2; // Default for tokens
+    }
+
     async connectWebSocket() {
         try {
             const wsUrl = `${this.config.websocketProtocol}//${this.config.websocketHost}:${this.config.websocketPort}/ws`;
@@ -259,8 +289,9 @@ class WalletTracker {
         
         const shortAddress = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
         const tokenSymbol = balance ? balance.token_symbol : 'N/A';
-        const balanceAmount = balance ? balance.balance.toFixed(6) : '0.000000';
-        const usdValue = balance && balance.usd_value ? `$${balance.usd_value.toFixed(2)}` : 'N/A';
+        const decimals = this.getTokenDecimals(tokenSymbol);
+        const balanceAmount = balance ? this.formatBalance(balance.balance, decimals) : '0.00';
+        const usdValue = balance && balance.usd_value ? `$${this.formatBalance(balance.usd_value, 2)}` : 'N/A';
         
         row.innerHTML = `
             <td>
@@ -458,7 +489,7 @@ class WalletTracker {
                 <span class="token-symbol">${tx.type}</span>
                 <span class="network-badge network-${tx.blockchain?.toLowerCase()}">${tx.blockchain}</span>
             </td>
-            <td class="transaction-amount">${parseFloat(tx.amount).toFixed(6)}</td>
+            <td class="transaction-amount">${this.formatBalance(parseFloat(tx.amount), this.getTokenDecimals(tx.type))}</td>
             <td>
                 <span class="direction-badge ${directionClass}">${direction}</span>
             </td>
