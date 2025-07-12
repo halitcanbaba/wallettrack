@@ -263,6 +263,43 @@ body {
     animation: balanceDecrease 1s ease;
 }
 
+/* Balance notifications */
+.balance-notification {
+    font-family: 'Inter', sans-serif;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+.balance-notification-success {
+    background: linear-gradient(135deg, #00d084 0%, #00b571 100%) !important;
+    color: #000 !important;
+}
+
+.balance-notification-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+    color: #000 !important;
+}
+
+/* Row update animations */
+.balance-row-update {
+    animation: balanceRowUpdate 0.8s ease;
+}
+
+@keyframes balanceRowUpdate {
+    0% {
+        background: rgba(0, 208, 132, 0.2);
+        transform: scale(1.005);
+    }
+    50% {
+        background: rgba(0, 208, 132, 0.1);
+        transform: scale(1.002);
+    }
+    100% {
+        background: transparent;
+        transform: scale(1);
+    }
+}
+
 /* New transaction animation */
 .transaction-new {
     animation: newTransactionPulse 0.6s ease;
@@ -597,6 +634,44 @@ body {
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+}
+
+/* Loading Indicators */
+.loading-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+    font-size: 14px;
+    color: #888;
+}
+
+.loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #333;
+    border-top: 2px solid #00d084;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-row {
+    text-align: center;
+    padding: 32px 16px;
+    font-size: 14px;
+    color: #888;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.loading-row .loading-container {
+    margin: 0 auto;
+    max-width: 200px;
 }
 
 /* Responsive Design */

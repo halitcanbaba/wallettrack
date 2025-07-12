@@ -35,8 +35,10 @@ class ConnectionManager:
     async def broadcast(self, message: dict):
         """Broadcast a message to all connected clients"""
         if not self.active_connections:
+            logger.info("📡 No active WebSocket connections for broadcast")
             return
-            
+        
+        logger.info(f"📡 Broadcasting to {len(self.active_connections)} connections: {message.get('type', 'unknown')}")
         message_str = json.dumps(message, default=str)
         disconnected = set()
         

@@ -23,7 +23,19 @@ class TronGridClient:
     
     def __init__(self):
         self.base_url = "https://api.trongrid.io"
-        self.client = httpx.AsyncClient(timeout=30.0)
+        
+        # Get API key from environment
+        self.api_key = os.getenv('TRONGRID_API_KEY')
+        
+        # Set up headers with API key
+        headers = {}
+        if self.api_key:
+            headers['TRON-PRO-API-KEY'] = self.api_key
+            logger.info(f"TronGrid API Key configured: {self.api_key[:8]}...")
+        else:
+            logger.warning("TronGrid API Key not found in environment variables")
+        
+        self.client = httpx.AsyncClient(timeout=30.0, headers=headers)
         self.tron = Tron(network='mainnet')
         
         # USDT TRC20 contract
@@ -60,12 +72,12 @@ class TronGridClient:
     async def get_usdt_balance(self, address: str) -> float:
         """Get USDT (TRC20) balance for an address"""
         try:
-            # Method 1: Try using TronGrid API directly
+            # Method 1: Try using TronGrid API directly (primary method)
             balance = await self._get_usdt_via_api(address)
             if balance > 0:
                 return balance
                 
-            # Method 2: Try using contract call
+            # Method 2: Try using contract call (fallback)
             return await self._get_usdt_via_contract(address)
             
         except Exception as e:
@@ -75,35 +87,49 @@ class TronGridClient:
     async def _get_usdt_via_api(self, address: str) -> float:
         """Get USDT balance using TronGrid API"""
         try:
-            # Method 1: Try the TRC20 transfers endpoint
-            url = f"{self.base_url}/v1/accounts/{address}/transactions/trc20"
-            params = {
-                "limit": 200,
-                "contract_address": self.usdt_contract_address
-            }
+            # Use TronGrid API account endpoint which includes TRC20 balances
+            url = f"{self.base_url}/v1/accounts/{address}"
             
-            response = await self.client.get(url, params=params)
-            if response.status_code == 200:
+            response = await self._make_request_with_retry('GET', url)
+            if response and response.status_code == 200:
                 data = response.json()
-                # This doesn't give us balance directly, so let's try another approach
-            
-            # Method 2: Try the account resource endpoint
-            url2 = f"{self.base_url}/v1/accounts/{address}"
-            response2 = await self.client.get(url2)
-            response2.raise_for_status()
-            
-            # Directly use TronScan method as it's more reliable
-            return await self._get_usdt_via_contract(address)
+                
+                # Check if the response is successful and contains data
+                if data.get('success') and 'data' in data and data['data']:
+                    account_data = data['data'][0]
+                    
+                    # Check TRC20 tokens in the account data
+                    if 'trc20' in account_data:
+                        for token_data in account_data['trc20']:
+                            if token_data.get(self.usdt_contract_address):
+                                balance_str = token_data[self.usdt_contract_address]
+                                try:
+                                    balance = float(balance_str) / 1_000_000
+                                    logger.info(f"USDT balance (TronGrid) for {address}: {balance}")
+                                    return balance
+                                except (ValueError, TypeError):
+                                    logger.warning(f"Invalid USDT balance format: {balance_str}")
+                                    continue
+                    
+                    # If no USDT balance found, return 0
+                    logger.debug(f"No USDT tokens found for {address}")
+                    return 0.0
+                else:
+                    logger.warning(f"TronGrid API returned invalid data for {address}")
+                    return 0.0
+            else:
+                logger.warning(f"TronGrid API failed for {address}")
+                return 0.0
             
         except Exception as e:
-            logger.error(f"API method failed for USDT balance {address}: {e}")
+            logger.error(f"TronGrid API method failed for USDT balance {address}: {e}")
             return 0.0
     
     async def _get_usdt_via_contract(self, address: str) -> float:
         """Get USDT balance using smart contract call"""
         try:
-            # Simplest approach - use direct API call to TronScan
-            tronscan_url = f"https://apilist.tronscan.org/api/account"
+            # Primary method - TronScan API (most reliable)
+            tronscan_url = "https://apilist.tronscan.org/api/account"
             params = {
                 "address": address
             }
@@ -117,16 +143,26 @@ class TronGridClient:
                     for token in data['trc20token_balances']:
                         if token.get('tokenId') == self.usdt_contract_address:
                             balance_str = token.get('balance', '0')
-                            balance = float(balance_str) / 1_000_000
-                            logger.info(f"USDT balance (TronScan) for {address}: {balance}")
-                            return balance
+                            try:
+                                balance = float(balance_str) / 1_000_000
+                                logger.debug(f"USDT balance (TronScan) for {address}: {balance}")
+                                return balance
+                            except (ValueError, TypeError):
+                                logger.warning(f"Invalid USDT balance format: {balance_str}")
+                                continue
+                
+                # If no USDT balance found, return 0 (don't try fallback to avoid more rate limits)
+                logger.debug(f"No USDT tokens found for {address}")
+                return 0.0
             
-            # If TronScan fails, try the original contract method
-            return await self._get_usdt_contract_fallback(address)
+            # If TronScan API fails, return 0 instead of trying fallback to avoid rate limits
+            logger.warning(f"TronScan API failed for {address}, returning 0 USDT to avoid rate limits")
+            return 0.0
             
         except Exception as e:
             logger.error(f"TronScan method failed for USDT balance {address}: {e}")
-            return await self._get_usdt_contract_fallback(address)
+            # Return 0 instead of trying fallback during rate limiting
+            return 0.0
     
     async def _get_usdt_contract_fallback(self, address: str) -> float:
         """Fallback contract method"""
@@ -268,7 +304,8 @@ class TronGridClient:
                     from_addr = parameter_value.get("owner_address", "")
                     to_addr = parameter_value.get("contract_address", "")
                     amount = parameter_value.get("call_value", 0) / 1_000_000
-                 # Fix timestamp - ensure it's in seconds (not milliseconds)
+                
+                # Fix timestamp - ensure it's in seconds (not milliseconds)
                 timestamp = tx.get("block_timestamp", 0)
                 if timestamp > 10000000000:  # If it's in milliseconds, convert to seconds
                     timestamp = timestamp // 1000
@@ -429,9 +466,9 @@ class TronGridClient:
     async def _create_transaction_balance_history(self, wallet_id: int, transaction: dict):
         """Create balance history record after a transaction"""
         try:
-            from database import get_db, BalanceHistory, Token, Blockchain
+            from database import AsyncSessionLocal, BalanceHistory, Token, Blockchain, Wallet
             
-            async for db in get_db():
+            async with AsyncSessionLocal() as db:
                 try:
                     # Get TRON blockchain
                     tron_blockchain = await db.execute(
@@ -456,7 +493,6 @@ class TronGridClient:
                         return
                     
                     # Get current wallet address to fetch fresh balance
-                    from database import Wallet
                     wallet = await db.execute(
                         select(Wallet).where(Wallet.id == wallet_id)
                     )
@@ -492,8 +528,6 @@ class TronGridClient:
                 except Exception as db_error:
                     logger.error(f"Database error creating transaction balance history: {db_error}")
                     await db.rollback()
-                finally:
-                    break
                     
         except Exception as e:
             logger.error(f"Error creating transaction balance history: {e}")
@@ -689,271 +723,5 @@ class TronGridClient:
             logger.error(f"Error fetching transactions from TronScan for {address}: {e}")
             return []
 
-class BalanceMonitor:
-    """Background service to monitor wallet balances"""
-    
-    def __init__(self):
-        self.tron_client = TronGridClient()
-        self.is_running = False
-        self.monitor_task = None
-        
-        # Monitoring intervals from environment variables
-        self.balance_check_interval = int(os.getenv('BALANCE_CHECK_INTERVAL', '45'))
-        self.transaction_check_interval = int(os.getenv('TRANSACTION_CHECK_INTERVAL', '60'))
-        
-        logger.info(f"TRON Monitor intervals: balance={self.balance_check_interval}s, transactions={self.transaction_check_interval}s")
-        
-    async def fetch_wallet_balances(self, wallet_address: str) -> tuple[float, float]:
-        """Fetch both TRX and USDT balances for a wallet"""
-        trx_balance, usdt_balance = await asyncio.gather(
-            self.tron_client.get_trx_balance(wallet_address),
-            self.tron_client.get_usdt_balance(wallet_address),
-            return_exceptions=True
-        )
-        
-        # Handle exceptions
-        if isinstance(trx_balance, Exception):
-            logger.error(f"TRX balance error: {trx_balance}")
-            trx_balance = 0.0
-        if isinstance(usdt_balance, Exception):
-            logger.error(f"USDT balance error: {usdt_balance}")
-            usdt_balance = 0.0
-            
-        return float(trx_balance), float(usdt_balance)
-    
-    async def update_wallet_balance(self, db: AsyncSession, wallet: Wallet):
-        """Update balance for a single wallet using new schema"""
-        try:
-            # Only process TRON wallets 
-            tron_blockchain = await db.execute(
-                select(Blockchain).where(Blockchain.name == "TRON")
-            )
-            tron_blockchain = tron_blockchain.scalar_one_or_none()
-            if not tron_blockchain or wallet.blockchain_id != tron_blockchain.id:
-                return
-                
-            trx_balance, usdt_balance = await self.fetch_wallet_balances(wallet.address)
-            
-            # Get TRX token
-            trx_token = await db.execute(
-                select(Token).where(
-                    Token.symbol == "TRX",
-                    Token.blockchain_id == tron_blockchain.id
-                )
-            )
-            trx_token = trx_token.scalar_one_or_none()
-            
-            # Get USDT token  
-            usdt_token = await db.execute(
-                select(Token).where(
-                    Token.symbol == "USDT",
-                    Token.blockchain_id == tron_blockchain.id
-                )
-            )
-            usdt_token = usdt_token.scalar_one_or_none()
-            
-            if not trx_token or not usdt_token:
-                logger.error("TRX or USDT token not found in database")
-                return
-            
-            # Update TRX balance
-            await self._update_wallet_token_balance(db, wallet.id, trx_token.id, trx_balance, None)
-            
-            # Update USDT balance
-            await self._update_wallet_token_balance(db, wallet.id, usdt_token.id, usdt_balance, None)
-            
-            # Update wallet last_updated
-            wallet.last_updated = datetime.utcnow()
-            
-            await db.commit()
-            
-            logger.info(f"Updated TRON wallet {wallet.address}: TRX={trx_balance:.6f}, USDT={usdt_balance:.2f}")
-            
-            # Broadcast update via WebSocket
-            from websocket_manager import manager
-            update_data = {
-                "wallet_id": wallet.id,
-                "blockchain": "TRON", 
-                "trx_balance": trx_balance,
-                "usdt_balance": usdt_balance,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            await manager.broadcast({
-                "type": "balance_update",
-                "data": update_data
-            })
-            
-        except Exception as e:
-            logger.error(f"Error updating balance for wallet {wallet.address}: {e}")
-            await db.rollback()
-    
-    async def _update_wallet_token_balance(self, db: AsyncSession, wallet_id: int, token_id: int, balance: float, transaction_hash: str = None):
-        """Update or create wallet token balance with history tracking"""
-        from websocket_manager import manager
-        from database import WalletToken, BalanceHistory
-        
-        # Check existing balance
-        existing = await db.execute(
-            select(WalletToken).where(
-                WalletToken.wallet_id == wallet_id,
-                WalletToken.token_id == token_id
-            )
-        )
-        wallet_token = existing.scalar_one_or_none()
-        
-        if wallet_token:
-            # Update existing balance and create history if significant change
-            old_balance = wallet_token.balance
-            wallet_token.balance = balance
-            wallet_token.last_updated = datetime.utcnow()
-            
-            # Create balance history for ANY change > 0 (as requested)
-            change_amount = balance - old_balance
-            if abs(change_amount) > 0.000001:  # Very small threshold for any meaningful change
-                change_percentage = ((change_amount / old_balance) * 100) if old_balance > 0 else None
-                change_type = 'increase' if change_amount > 0 else 'decrease'
-                
-                history = BalanceHistory(
-                    wallet_id=wallet_id,
-                    token_id=token_id,
-                    balance_before=old_balance,
-                    balance_after=balance,
-                    change_amount=change_amount,
-                    change_percentage=change_percentage,
-                    change_type=change_type,
-                    transaction_hash=transaction_hash
-                )
-                db.add(history)
-                
-                logger.info(f"Created TRON balance history: {change_type} of {abs(change_amount):.6f}")
-                
-                # Send WebSocket notification for balance changes
-                await manager.broadcast({
-                    "type": "balance_change",
-                    "data": {
-                        "wallet_id": wallet_id,
-                        "token_id": token_id,
-                        "change_type": change_type,
-                        "change_amount": change_amount,
-                        "change_percentage": change_percentage,
-                        "balance_before": old_balance,
-                        "balance_after": balance,
-                        "blockchain": "TRON"
-                    }
-                })
-        else:
-            # Create new balance record if balance > 0
-            if balance > 0:
-                wallet_token = WalletToken(
-                    wallet_id=wallet_id,
-                    token_id=token_id,
-                    balance=balance,
-                    last_updated=datetime.utcnow()
-                )
-                db.add(wallet_token)
-                
-                # Create initial balance history record
-                history = BalanceHistory(
-                    wallet_id=wallet_id,
-                    token_id=token_id,
-                    balance_before=0.0,
-                    balance_after=balance,
-                    change_amount=balance,
-                    change_percentage=None,  # No percentage for initial balance
-                    change_type='initial',
-                    transaction_hash=transaction_hash
-                )
-                db.add(history)
-                
-                logger.info(f"Created TRON initial balance: {balance:.6f}")
-                
-                # Send WebSocket notification for new balance
-                await manager.broadcast({
-                    "type": "new_balance",
-                    "data": {
-                        "wallet_id": wallet_id,
-                        "token_id": token_id,
-                        "balance": balance,
-                        "blockchain": "TRON"
-                    }
-                })
-    
-    async def monitor_loop(self):
-        """Main monitoring loop"""
-        self.is_running = True
-        logger.info("Starting TRON balance monitoring loop...")
-        
-        while self.is_running:
-            try:
-                async for db in get_db():
-                    try:
-                        # Get all active TRON wallets
-                        result = await db.execute(
-                            select(Wallet).join(Blockchain).where(
-                                Blockchain.name == "TRON",
-                                Wallet.is_active == True
-                            )
-                        )
-                        wallets = result.scalars().all()
-                        
-                        if not wallets:
-                            logger.info("No TRON wallets to monitor")
-                        else:
-                            logger.info(f"Monitoring {len(wallets)} TRON wallets...")
-                            
-                            # Update balances for all wallets
-                            for wallet in wallets:
-                                if not self.is_running:  # Check if stopped during loop
-                                    break
-                                await self.update_wallet_balance(db, wallet)
-                                
-                                # Also check for new transactions (every other cycle to reduce load)
-                                import time
-                                current_cycle = int(time.time() / self.balance_check_interval)
-                                if current_cycle % 2 == 0:  # Every other cycle
-                                    try:
-                                        # Get transactions from last cycle
-                                        since_timestamp = int(time.time() - (self.balance_check_interval * 2))
-                                        new_transactions = await self.tron_client.get_recent_transactions_with_notifications(
-                                            wallet.address, wallet.id, since_timestamp
-                                        )
-                                        if new_transactions:
-                                            logger.info(f"Found {len(new_transactions)} new TRON transactions for wallet {wallet.id}")
-                                    except Exception as tx_error:
-                                        logger.error(f"Error checking TRON transactions for wallet {wallet.id}: {tx_error}")
-                                
-                                # Small delay between requests to avoid rate limiting
-                                await asyncio.sleep(self.tron_client.min_request_interval)
-                        
-                    except Exception as db_error:
-                        logger.error(f"Database error in TRON monitoring: {db_error}")
-                        await db.rollback()
-                    finally:
-                        break  # Exit the async generator
-                
-                # Wait for configured interval before next check
-                await asyncio.sleep(self.balance_check_interval)
-                
-            except Exception as e:
-                logger.error(f"Error in TRON monitoring loop: {e}")
-                await asyncio.sleep(10)  # Shorter wait on error
-    
-    def start_monitoring(self):
-        """Start the monitoring task"""
-        if not self.is_running:
-            self.monitor_task = asyncio.create_task(self.monitor_loop())
-    
-    def stop_monitoring(self):
-        """Stop the monitoring task"""
-        self.is_running = False
-        if self.monitor_task and not self.monitor_task.done():
-            self.monitor_task.cancel()
-
-    async def close(self):
-        """Close all resources and stop monitoring"""
-        self.stop_monitoring()
-        await self.tron_client.close()
-
-
-# Global monitor instance
-monitor = BalanceMonitor()
+# Global TronGridClient instance
+tron_client = TronGridClient()

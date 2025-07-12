@@ -19,8 +19,10 @@ class WalletService:
     def __init__(self):
         self.balance_service = BalanceService()
 
-    async def get_wallets_with_balances(self, db: AsyncSession) -> List[WalletWithBalances]:
+    async def get_wallets_with_balances(self, db: AsyncSession, bypass_cache: bool = False) -> List[WalletWithBalances]:
         """Get all monitored wallets with their current balances"""
+        
+        logger.info(f"🚀 Fetching fresh wallet data (cache disabled)")
         
         # Get all active wallets with relationships
         result = await db.execute(
@@ -81,6 +83,7 @@ class WalletService:
             
             wallet_list.append(wallet_response)
         
+        logger.info(f"✅ Returning {len(wallet_list)} wallets (no cache)")
         return wallet_list
 
     async def get_wallet_with_balances(self, db: AsyncSession, wallet_id: int) -> WalletWithBalances:

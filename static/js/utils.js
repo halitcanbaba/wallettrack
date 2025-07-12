@@ -14,26 +14,39 @@ async function addWallet() {
         return;
     }
     
+    console.log('Adding wallet:', { address, network });
+    
     try {
-        const response = await fetch('/api/wallets', {
+        // Use legacy endpoint for easier integration
+        const payload = {
+            address: address,
+            blockchain: network.toUpperCase() === 'ETHEREUM' ? 'ETH' : 'TRON',
+            name: `${network.charAt(0).toUpperCase() + network.slice(1)} Wallet`
+        };
+        
+        console.log('Payload:', payload);
+        console.log('Sending request to:', '/api/wallets/legacy');
+        
+        const response = await fetch('/api/wallets/legacy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                address: address,
-                blockchain: network
-            })
+            body: JSON.stringify(payload)
         });
         
         if (response.ok) {
+            console.log('Wallet added successfully');
             document.getElementById('walletAddress').value = '';
             toggleAddWalletForm();
             location.reload(); // Simple refresh for now
         } else {
-            alert('Failed to add wallet');
+            console.error('Failed to add wallet. Status:', response.status);
+            const errorData = await response.json();
+            console.error('Error details:', errorData);
+            alert(`Failed to add wallet: ${errorData.detail || 'Unknown error'}`);
         }
     } catch (error) {
         console.error('Error adding wallet:', error);
-        alert('Error adding wallet');
+        alert('Network error: Could not connect to server');
     }
 }
 

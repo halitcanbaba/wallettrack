@@ -6,6 +6,10 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+# Setup logging configuration first
+from log_config import setup_logging
+setup_logging()
+
 from app.core.config import APP_TITLE, APP_DESCRIPTION, APP_VERSION
 from app.core.dependencies import lifespan, logger
 from app.api import wallets, transactions, balances, tokens, system

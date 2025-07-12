@@ -6,10 +6,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from database import init_db, seed_initial_data, AsyncSessionLocal
-from tron_service import monitor as tron_monitor
+from tron_monitor import tron_monitor
 from eth_monitor import ethereum_monitor
 from eth_service import EthereumService
-from tron_service import TronGridClient
+from tron_service import tron_client
 from websocket_manager import manager
 
 # Setup logging
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize services
 eth_service = EthereumService(use_v2_api=True)
-tron_service = TronGridClient()
+tron_service = tron_client  # Alias for backward compatibility
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Multi-Blockchain Wallet Monitor...")
     await init_db()
     await seed_initial_data()
-    tron_monitor.start_monitoring()
+    await tron_monitor.start_monitoring()
     await ethereum_monitor.start_monitoring()
     logger.info("Application started successfully")
     
@@ -35,8 +35,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Wallet Monitor...")
-    await tron_monitor.close()
+    await tron_monitor.stop_monitoring()
     await ethereum_monitor.stop_monitoring()
     await eth_service.close()
-    await tron_service.close()
+    await tron_client.close()
     logger.info("Application shutdown complete")

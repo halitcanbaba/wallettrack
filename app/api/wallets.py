@@ -33,6 +33,8 @@ async def get_blockchains(db: AsyncSession = Depends(get_db)):
 async def create_wallet(wallet_data: WalletCreate, db: AsyncSession = Depends(get_db)):
     """Add a new wallet for monitoring"""
     
+    logger.info(f"POST /api/wallets called with data: {wallet_data}")
+    
     # Check if wallet already exists
     existing = await db.execute(
         select(Wallet).where(
@@ -122,6 +124,8 @@ async def refresh_wallet_balances(wallet_id: int, db: AsyncSession = Depends(get
 @router.post("/wallets/legacy", response_model=LegacyWalletResponse)
 async def create_wallet_legacy(wallet_data: LegacyWalletCreate, db: AsyncSession = Depends(get_db)):
     """Legacy endpoint for backward compatibility"""
+    
+    logger.info(f"POST /api/wallets/legacy called with data: {wallet_data}")
     
     # Map blockchain name to ID
     blockchain_result = await db.execute(

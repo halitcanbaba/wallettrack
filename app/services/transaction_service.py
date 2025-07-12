@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from database import Wallet
 from app.core.dependencies import eth_service, tron_service, logger
 from app.core.config import DUST_FILTER_THRESHOLD
+from app.core.cache import transaction_cache, get_transaction_cache_key
 from websocket_manager import manager
 
 class TransactionService:
@@ -19,6 +20,15 @@ class TransactionService:
     async def get_all_transactions(self, db: AsyncSession, limit: int = 50, hours: int = 24):
         """Get recent transactions from all wallets within specified hours"""
         try:
+            # Check cache first
+            cache_key = get_transaction_cache_key(limit, hours)
+            cached_result = transaction_cache.get(cache_key)
+            if cached_result is not None:
+                logger.info(f"🚀 Cache HIT: Returning {len(cached_result)} transactions from cache")
+                return cached_result
+            
+            logger.info(f"⏳ Cache MISS: Fetching fresh data...")
+            
             # Calculate cutoff time for "recent" transactions
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
             cutoff_timestamp = int(cutoff_time.timestamp())
@@ -142,18 +152,23 @@ class TransactionService:
             
             logger.info(f"Found {total_count} recent transactions (last {hours}h), returning top {recent_count}")
             
+            # Cache the result
+            final_result = limited_transactions
+            transaction_cache.set(cache_key, final_result, ttl=30)  # Cache for 30 seconds
+            logger.info(f"💾 Cached {len(final_result)} transactions")
+            
             # Send WebSocket notification for new transactions
             if all_transactions:
                 await manager.broadcast({
                     "type": "transactions_update",
                     "data": {
-                        "transaction_count": len(all_transactions[:limit]),
-                        "latest_transactions": all_transactions[:5]  # Send latest 5 for real-time display
+                        "transaction_count": len(final_result),
+                        "latest_transactions": final_result[:5]  # Send latest 5 for real-time display
                     }
                 })
             
-            # Return the most recent transactions up to the limit
-            return all_transactions[:limit]
+            # Return the cached result
+            return final_result
             
         except Exception as e:
             logger.error(f"Error getting transactions: {e}")

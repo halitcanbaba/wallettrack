@@ -137,7 +137,8 @@ class WalletTracker {
         
         switch (message.type) {
             case 'balance_update':
-                this.loadWallets(); // Reload wallet data
+                console.log('🚀 Balance update received:', message.data);
+                this.handleBalanceUpdate(message.data);
                 break;
             case 'new_transaction':
                 this.handleNewTransaction(message.data);
@@ -168,6 +169,65 @@ class WalletTracker {
             default:
                 console.log('Unknown message type:', message.type);
         }
+    }
+
+    handleBalanceUpdate(balanceData) {
+        console.log('💰 Processing balance update:', balanceData);
+        
+        // Force reload wallets to get fresh data (bypassing cache)
+        this.loadWallets(true);
+        
+        // Show a notification
+        if (balanceData.change_type && balanceData.token_symbol) {
+            const changeType = balanceData.change_type;
+            const amount = Math.abs(balanceData.change_amount || 0);
+            const symbol = balanceData.token_symbol;
+            const percentage = Math.abs(balanceData.change_percentage || 0);
+            
+            let message = `${symbol} balance ${changeType}: ${amount.toFixed(6)} (${percentage.toFixed(2)}%)`;
+            this.showBalanceNotification(message, changeType.includes('increase') ? 'success' : 'warning');
+        }
+    }
+
+    showBalanceNotification(message, type = 'info') {
+        // Create a temporary notification element
+        const notification = document.createElement('div');
+        notification.className = `balance-notification balance-notification-${type}`;
+        notification.textContent = message;
+        
+        // Style the notification
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${type === 'success' ? '#00d084' : '#ffc107'};
+            color: ${type === 'success' ? '#000' : '#000'};
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 12px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Animate in
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 100);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 3000);
     }
 
     handleNewTransaction(transactionData) {
@@ -203,19 +263,32 @@ class WalletTracker {
 
     async loadInitialData() {
         try {
-            const [walletsResponse, transactionsResponse] = await Promise.all([
+            // Show loading indicators
+            this.showLoadingIndicator('balanceTableBody', 'Loading wallets...');
+            this.showLoadingIndicator('transactionsTableBody', 'Loading transactions...');
+            
+            // Load data in parallel with Promise.allSettled to handle failures gracefully
+            const [walletsResult, transactionsResult] = await Promise.allSettled([
                 fetch('/api/wallets'),
                 fetch(`/api/transactions?limit=${this.config.maxTransactionsDisplay}&hours=1`)
             ]);
             
-            if (walletsResponse.ok) {
-                const wallets = await walletsResponse.json();
+            // Handle wallets result
+            if (walletsResult.status === 'fulfilled' && walletsResult.value.ok) {
+                const wallets = await walletsResult.value.json();
                 this.displayWallets(wallets);
+            } else {
+                console.error('Failed to load wallets:', walletsResult.reason || 'Unknown error');
+                this.showError('Failed to load wallets');
             }
             
-            if (transactionsResponse.ok) {
-                const transactions = await transactionsResponse.json();
+            // Handle transactions result
+            if (transactionsResult.status === 'fulfilled' && transactionsResult.value.ok) {
+                const transactions = await transactionsResult.value.json();
                 this.displayTransactions(transactions);
+            } else {
+                console.error('Failed to load transactions:', transactionsResult.reason || 'Unknown error');
+                this.showError('Failed to load transactions');
             }
         } catch (error) {
             console.error('Failed to load initial data:', error);
@@ -223,12 +296,34 @@ class WalletTracker {
         }
     }
 
-    async loadWallets() {
+    showLoadingIndicator(elementId, message = 'Loading...') {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        element.innerHTML = `
+            <tr>
+                <td colspan="7" class="loading-row">
+                    <div class="loading-container">
+                        <div class="loading-spinner"></div>
+                        <span>${message}</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    async loadWallets(forceRefresh = false) {
         try {
-            const response = await fetch('/api/wallets');
+            const url = `/api/wallets?_t=${Date.now()}`;
+                
+            const response = await fetch(url);
             if (response.ok) {
                 const wallets = await response.json();
-                this.displayWallets(wallets);
+                this.displayWallets(wallets, forceRefresh);
+                
+                if (forceRefresh) {
+                    console.log('🔄 Wallets reloaded (cache disabled)');
+                }
             }
         } catch (error) {
             console.error('Failed to load wallets:', error);
@@ -255,7 +350,7 @@ class WalletTracker {
         }
     }
 
-    displayWallets(wallets) {
+    displayWallets(wallets, isRefresh = false) {
         const tbody = document.getElementById('balanceTableBody');
         if (!tbody) return;
         
@@ -268,6 +363,9 @@ class WalletTracker {
             return;
         }
         
+        // Store current rows for animation comparison
+        const existingRows = isRefresh ? Array.from(tbody.querySelectorAll('tr')) : [];
+        
         tbody.innerHTML = '';
         
         wallets.forEach(wallet => {
@@ -275,10 +373,25 @@ class WalletTracker {
                 wallet.balances.forEach(balance => {
                     const row = this.createWalletRow(wallet, balance);
                     tbody.appendChild(row);
+                    
+                    // Add update animation if this is a refresh
+                    if (isRefresh) {
+                        row.classList.add('balance-row-update');
+                        setTimeout(() => {
+                            row.classList.remove('balance-row-update');
+                        }, 800);
+                    }
                 });
             } else {
                 const row = this.createWalletRow(wallet, null);
                 tbody.appendChild(row);
+                
+                if (isRefresh) {
+                    row.classList.add('balance-row-update');
+                    setTimeout(() => {
+                        row.classList.remove('balance-row-update');
+                    }, 800);
+                }
             }
         });
     }
