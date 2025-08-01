@@ -5,7 +5,7 @@ from typing import List
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -44,8 +44,10 @@ class WalletService:
             total_usd_value = 0.0
             
             for wallet_token in wallet.wallet_tokens:
-                if wallet_token.balance > 0:  # Only show positive balances
+                # Only show positive balances and non-hidden tokens
+                if wallet_token.balance > 0 and not wallet_token.is_hidden:
                     balance = TokenBalance(
+                        wallet_id=wallet.id,  # Add wallet_id for hiding functionality
                         token_id=wallet_token.token.id,
                         token_symbol=wallet_token.token.symbol,
                         token_name=wallet_token.token.name,
@@ -107,8 +109,10 @@ class WalletService:
         total_usd_value = 0.0
         
         for wallet_token in wallet.wallet_tokens:
-            if wallet_token.balance > 0:
+            # Only show positive balances and non-hidden tokens
+            if wallet_token.balance > 0 and not wallet_token.is_hidden:
                 balance = TokenBalance(
+                    wallet_id=wallet.id,  # Add wallet_id for hiding functionality
                     token_id=wallet_token.token.id,
                     token_symbol=wallet_token.token.symbol,
                     token_name=wallet_token.token.name,
@@ -144,7 +148,7 @@ class WalletService:
         )
 
     async def refresh_wallet_balances(self, db: AsyncSession, wallet_id: int):
-        """Manually refresh balances for a specific wallet"""
+        """Manually refresh balances for a specific wallet and show all hidden tokens"""
         
         # Get wallet info
         result = await db.execute(
@@ -157,6 +161,18 @@ class WalletService:
             raise HTTPException(status_code=404, detail="Wallet not found")
         
         try:
+            # First, unhide all tokens for this wallet
+            from sqlalchemy import update
+            unhide_query = (
+                update(WalletToken)
+                .where(WalletToken.wallet_id == wallet_id)
+                .values(is_hidden=False)
+            )
+            await db.execute(unhide_query)
+            await db.commit()
+            
+            logger.info(f"Unhid all tokens for wallet {wallet_id}")
+            
             if wallet.blockchain_ref.name == "ETH":
                 # Get fresh balances from Ethereum
                 balances = await eth_service.get_wallet_balances(wallet.address)
@@ -172,7 +188,7 @@ class WalletService:
                 wallet.last_updated = datetime.utcnow()
                 await db.commit()
             
-            return {"status": "success", "message": "Balances refreshed successfully"}
+            return {"status": "success", "message": "Balances refreshed and all tokens shown"}
             
         except Exception as e:
             logger.error(f"Error refreshing balances for wallet {wallet_id}: {e}")

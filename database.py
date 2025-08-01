@@ -82,6 +82,7 @@ class WalletToken(Base):
     token_id = Column(Integer, ForeignKey("tokens.id"), nullable=False)
     balance = Column(Float, nullable=False, default=0.0)
     usd_value = Column(Float, nullable=True)  # USD equivalent (if available)
+    is_hidden = Column(Boolean, default=False)  # User can hide unwanted tokens
     last_updated = Column(DateTime, default=datetime.utcnow)
     
     # Unique constraint - one record per wallet/token pair

@@ -435,12 +435,12 @@ class WalletTracker {
             </td>
             <td>
                 <div class="action-buttons">
-                    <button class="action-btn btn-view" onclick="viewWallet('${wallet.address}')" title="View Details">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="action-btn btn-refresh" onclick="refreshWallet('${wallet.address}')" title="Refresh">
+                    <button class="action-btn btn-refresh" onclick="refreshWallet(${wallet.id})" title="Refresh & Show All Tokens">
                         <i class="fas fa-sync"></i>
                     </button>
+                    ${balance ? `<button class="action-btn btn-hide" onclick="hideToken(${balance.wallet_id || wallet.id}, ${balance.token_id})" title="Hide Token">
+                        <i class="fas fa-eye-slash"></i>
+                    </button>` : ''}
                     <button class="action-btn btn-delete" onclick="deleteWallet('${wallet.address}')" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -850,4 +850,169 @@ class WalletTracker {
             }, 300);
         }, 4000);
     }
+}
+
+// Global functions for HTML onclick handlers
+async function hideToken(walletId, tokenId) {
+    if (!confirm('Bu tokeni gizlemek istediğinizden emin misiniz?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/tokens/${walletId}/${tokenId}/hide`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            // Refresh wallets to update the display
+            if (window.walletTracker) {
+                await window.walletTracker.loadWallets();
+                window.walletTracker.showTransactionNotification('Token başarıyla gizlendi');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Error hiding token:', error);
+            alert('Token gizlenirken hata oluştu: ' + error.detail);
+        }
+    } catch (error) {
+        console.error('Error hiding token:', error);
+        alert('Token gizlenirken hata oluştu');
+    }
+}
+
+async function showToken(walletId, tokenId) {
+    try {
+        const response = await fetch(`/api/tokens/${walletId}/${tokenId}/show`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            // Refresh wallets to update the display
+            if (window.walletTracker) {
+                await window.walletTracker.loadWallets();
+                window.walletTracker.showTransactionNotification('Token başarıyla gösterildi');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Error showing token:', error);
+            alert('Token gösterilirken hata oluştu: ' + error.detail);
+        }
+    } catch (error) {
+        console.error('Error showing token:', error);
+        alert('Token gösterilirken hata oluştu');
+    }
+}
+
+// Make WalletTracker globally accessible
+window.WalletTracker = WalletTracker;
+
+// Initialize the application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.walletTracker = new WalletTracker();
+});
+
+async function addWallet() {
+    const address = document.getElementById('walletAddress').value.trim();
+    const network = document.getElementById('walletNetwork').value;
+    
+    if (!address) {
+        alert('Please enter a wallet address');
+        return;
+    }
+    
+    const blockchainId = network === 'ethereum' ? 1 : 2; // Assuming 1=ETH, 2=TRON
+    
+    try {
+        const response = await fetch('/api/wallets', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                address: address,
+                blockchain_id: blockchainId,
+                name: null
+            })
+        });
+        
+        if (response.ok) {
+            document.getElementById('walletAddress').value = '';
+            toggleAddWalletForm();
+            
+            if (window.walletTracker) {
+                await window.walletTracker.loadWallets();
+            }
+        } else {
+            const error = await response.json();
+            alert('Error adding wallet: ' + error.detail);
+        }
+    } catch (error) {
+        console.error('Error adding wallet:', error);
+        alert('Error adding wallet');
+    }
+}
+
+async function deleteWallet(address) {
+    if (!confirm('Are you sure you want to delete this wallet?')) {
+        return;
+    }
+    
+    // Implementation would need wallet ID lookup
+    console.log('Delete wallet:', address);
+}
+
+async function refreshWallet(walletId) {
+    if (!confirm('Bu wallet\'ın tüm gizlenen tokenlarını göstermek ve bakiyeleri yenilemek istiyor musunuz?')) {
+        return;
+    }
+    
+    try {
+        // Add loading state to the button
+        const refreshBtn = document.querySelector(`button[onclick="refreshWallet(${walletId})"]`);
+        if (refreshBtn) {
+            refreshBtn.classList.add('loading');
+            refreshBtn.disabled = true;
+        }
+        
+        const response = await fetch(`/api/wallets/${walletId}/refresh`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            // Refresh the wallet display
+            if (window.walletTracker) {
+                await window.walletTracker.loadWallets();
+                window.walletTracker.showTransactionNotification('Wallet yenilendi ve tüm tokenlar gösterildi');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Error refreshing wallet:', error);
+            alert('Wallet yenilenirken hata oluştu: ' + error.detail);
+        }
+    } catch (error) {
+        console.error('Error refreshing wallet:', error);
+        alert('Wallet yenilenirken hata oluştu');
+    } finally {
+        // Remove loading state
+        const refreshBtn = document.querySelector(`button[onclick="refreshWallet(${walletId})"]`);
+        if (refreshBtn) {
+            refreshBtn.classList.remove('loading');
+            refreshBtn.disabled = false;
+        }
+    }
+}
+
+function toggleAddWalletForm() {
+    const form = document.getElementById('addWalletForm');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
 }

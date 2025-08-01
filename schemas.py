@@ -69,6 +69,7 @@ class WalletResponse(WalletBase):
 
 # Balance schemas
 class TokenBalance(BaseModel):
+    wallet_id: Optional[int] = None  # Add wallet_id for hiding functionality
     token_id: int
     token_symbol: str
     token_name: str
