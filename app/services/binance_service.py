@@ -91,7 +91,6 @@ class BinanceService:
                         "exchange": "binance"
                     }
                     
-                    logger.info(f"✅ Binance orderbook fetched: {len(orderbook['bids'])} bids, {len(orderbook['asks'])} asks")
                     return orderbook
                 else:
                     logger.error(f"❌ Binance API error: {response.status}")

@@ -92,7 +92,6 @@ class WhiteBitService:
                             "exchange": "whitebit"
                         }
                         
-                        logger.info(f"✅ WhiteBit orderbook fetched: {len(orderbook['bids'])} bids, {len(orderbook['asks'])} asks")
                         return orderbook
                     else:
                         logger.error(f"❌ WhiteBit API unexpected response format: {data}")

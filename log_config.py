@@ -83,6 +83,37 @@ LOGGING_CONFIG: Dict[str, Any] = {
             "level": "WARNING",  # Hide WebSocket connection logs
             "handlers": ["console"],
             "propagate": False
+        },
+        # Orderbook service loggers
+        "app.services.binance_service": {
+            "level": "WARNING",  # Only warnings and errors
+            "handlers": ["console"],
+            "propagate": False
+        },
+        "app.services.whitebit_service": {
+            "level": "WARNING",  # Only warnings and errors
+            "handlers": ["console"],
+            "propagate": False
+        },
+        "app.services.cointr_service": {
+            "level": "WARNING",  # Only warnings and errors
+            "handlers": ["console"],
+            "propagate": False
+        },
+        "app.api.orderbook": {
+            "level": "WARNING",  # Only warnings and errors
+            "handlers": ["console"],
+            "propagate": False
+        },
+        "app.services.transaction_service": {
+            "level": "WARNING",  # Only warnings and errors
+            "handlers": ["console"],
+            "propagate": False
+        },
+        "app.api.transactions": {
+            "level": "WARNING",  # Only warnings and errors
+            "handlers": ["console"],
+            "propagate": False
         }
     },
     "root": {
@@ -103,6 +134,16 @@ def setup_logging():
     # Set rate limiting logs to WARNING
     logging.getLogger("tron_service").setLevel(logging.WARNING)
     logging.getLogger("eth_service").setLevel(logging.WARNING)
+    
+    # Set orderbook services to WARNING level
+    logging.getLogger("app.services.binance_service").setLevel(logging.WARNING)
+    logging.getLogger("app.services.whitebit_service").setLevel(logging.WARNING)
+    logging.getLogger("app.services.cointr_service").setLevel(logging.WARNING)
+    logging.getLogger("app.api.orderbook").setLevel(logging.WARNING)
+    
+    # Set transaction services to WARNING level 
+    logging.getLogger("app.services.transaction_service").setLevel(logging.WARNING)
+    logging.getLogger("app.api.transactions").setLevel(logging.WARNING)
     
     print("🔧 Logging configuration applied - Reduced verbosity")
 

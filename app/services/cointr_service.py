@@ -80,8 +80,6 @@ class CoinTRService:
                 "limit": min(limit, 150)  # CoinTR max limit is 150
             }
             
-            logger.info(f"🔍 Getting CoinTR orderbook for {symbol}")
-            
             async with session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -98,7 +96,6 @@ class CoinTRService:
                                 "exchange": "cointr"
                             }
                             
-                            logger.info(f"✅ CoinTR orderbook fetched: {len(orderbook['bids'])} bids, {len(orderbook['asks'])} asks")
                             return orderbook
                         else:
                             logger.error(f"❌ CoinTR API missing orderbook data: {orderbook_data}")

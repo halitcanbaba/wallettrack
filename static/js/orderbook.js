@@ -11,6 +11,7 @@ class OrderbookManager {
         };
         this.connectionStatus = 'connecting';
         this.config = null;
+        this.calculationAmount = 200000; // Default 200k
         
         // Initialize with mock data to prevent errors
         this.initializeMockData();
@@ -27,33 +28,77 @@ class OrderbookManager {
     async init() {
         console.log('🔧 Initializing OrderbookManager...');
         await this.loadConfig();
+        this.setupAmountInput();
         this.startPeriodicUpdates();
         this.updateStatus('connected', 'green');
         console.log('✅ OrderbookManager initialized successfully');
+    }
+
+    setupAmountInput() {
+        const amountInput = document.getElementById('calculation-amount');
+        if (amountInput) {
+            amountInput.addEventListener('input', (e) => {
+                const parsedAmount = this.parseAmount(e.target.value);
+                if (parsedAmount > 0) {
+                    this.calculationAmount = parsedAmount;
+                    console.log('💰 Calculation amount updated to:', this.calculationAmount);
+                    this.updateComparisonTable(); // Refresh table with new amount
+                }
+            });
+            
+            // Set initial value
+            this.calculationAmount = this.parseAmount(amountInput.value);
+        }
+    }
+
+    parseAmount(input) {
+        if (!input || typeof input !== 'string') return 0;
+        
+        // Remove spaces and convert to lowercase
+        const cleaned = input.trim().toLowerCase();
+        
+        // Extract number and suffix
+        const match = cleaned.match(/^(\d+(?:\.\d+)?)\s*([kmb]?)$/);
+        if (!match) return 0;
+        
+        const number = parseFloat(match[1]);
+        const suffix = match[2];
+        
+        switch (suffix) {
+            case 'k':
+                return number * 1000;
+            case 'm':
+                return number * 1000000;
+            case 'b':
+                return number * 1000000000;
+            default:
+                return number;
+        }
     }
 
     async loadConfig() {
         try {
             const response = await fetch('/api/orderbook/config');
             if (response.ok) {
-                this.config = await response.json();
+                const result = await response.json();
+                this.config = result;
                 console.log('📋 Config loaded:', this.config);
             } else {
                 console.error('❌ Failed to load config:', response.status);
                 // Fallback config
                 this.config = {
-                    binance_commission: 5,
-                    whitebit_commission: 5,
-                    cointr_commission: 5
+                    binance_commission: 10,
+                    whitebit_commission: 10,
+                    cointr_commission: 15
                 };
             }
         } catch (error) {
             console.error('❌ Config load error:', error);
             // Fallback config
             this.config = {
-                binance_commission: 5,
-                whitebit_commission: 5,
-                cointr_commission: 5
+                binance_commission: 10,
+                whitebit_commission: 10,
+                cointr_commission: 15
             };
         }
     }
@@ -232,7 +277,7 @@ class OrderbookManager {
                 <tr class="ask-row">
                     <td class="price ask-price">${this.formatPrice(price)}</td>
                     <td class="amount">${this.formatAmount(amount)}</td>
-                    <td class="total">${this.formatPrice(total)}</td>
+                    <td class="total">${this.formatTotalPrice(total)}</td>
                 </tr>
             `;
         });
@@ -253,13 +298,50 @@ class OrderbookManager {
                 <tr class="bid-row">
                     <td class="price bid-price">${this.formatPrice(price)}</td>
                     <td class="amount">${this.formatAmount(amount)}</td>
-                    <td class="total">${this.formatPrice(total)}</td>
+                    <td class="total">${this.formatTotalPrice(total)}</td>
                 </tr>
             `;
         });
 
         html += '</table>';
         container.innerHTML = html;
+    }
+
+    /**
+     * Calculate weighted average price for orderbook depth
+     * @param {Array} asks - Array of [price, amount] pairs
+     * @param {number} targetAmount - Target amount to fill
+     * @returns {Object} - {weightedAvgPrice, totalAmount, canFill}
+     */
+    calculateWeightedAveragePrice(asks, targetAmount) {
+        if (!asks || asks.length === 0) {
+            return { weightedAvgPrice: 0, totalAmount: 0, canFill: false };
+        }
+
+        let totalCost = 0;
+        let totalAmountFilled = 0;
+        let remainingAmount = targetAmount;
+
+        for (const [price, amount] of asks) {
+            const askPrice = parseFloat(price);
+            const askAmount = parseFloat(amount);
+            
+            if (remainingAmount <= 0) break;
+            
+            const amountToTake = Math.min(remainingAmount, askAmount);
+            totalCost += askPrice * amountToTake;
+            totalAmountFilled += amountToTake;
+            remainingAmount -= amountToTake;
+        }
+
+        const canFill = remainingAmount <= 0;
+        const weightedAvgPrice = totalAmountFilled > 0 ? totalCost / totalAmountFilled : 0;
+
+        return {
+            weightedAvgPrice,
+            totalAmount: totalAmountFilled,
+            canFill
+        };
     }
 
     updateComparisonTable() {
@@ -282,13 +364,106 @@ class OrderbookManager {
 
             const bestBid = parseFloat(orderbook.bids[0][0]);
             const bestAsk = parseFloat(orderbook.asks[0][0]);
-            const askAmount = parseFloat(orderbook.asks[0][1]);
+            const askAmount = parseFloat(orderbook.asks[0][1]); // API'den gelen amount
             
-            const commissionBps = this.config ? this.config[`${exchange}_commission`] : 5;
-            const commission = (bestAsk * askAmount * commissionBps) / 10000;
+            // Binance best ask amount'u al (WhiteBit liquidity kontrolü için)
+            const binanceBestAskAmount = this.orderbooks.binance && this.orderbooks.binance.asks && this.orderbooks.binance.asks.length > 0 
+                ? parseFloat(this.orderbooks.binance.asks[0][1]) : 0;
+            
+            // .env'den gelen BPS değeri ile commission hesapla
+            const commissionBps = this.config ? this.config[`${exchange}_commission`] : 
+                (exchange === 'cointr' ? 15 : 10);
+            
+            // Commission hesaplaması için miktar belirleme ve fiyat hesaplama
+            let commissionBaseAmount, rawPrice, effectivePrice, liquidityWarning = '';
+            
+            if (exchange === 'whitebit') {
+                // WhiteBit için özel liquidity kontrolü ve WAVG hesaplaması
+                commissionBaseAmount = askAmount; // WhiteBit için sadece askAmount
+                effectivePrice = bestAsk;
+                
+                const commissionRate = commissionBps * 0.0001;
+                
+                console.log(`💡 ${exchange}: Calculating price for ${this.calculationAmount} USDT`);
+                console.log(`💡 ${exchange}: Best ask: ${bestAsk}, Best ask amount: ${askAmount}`);
+                console.log(`💡 ${exchange}: Binance best ask amount: ${binanceBestAskAmount}`);
+                
+                // Liquidity warning kontrolü (sadece notification için)
+                if (this.calculationAmount > binanceBestAskAmount) {
+                    liquidityWarning = ' <small style="color: #ff0000;">(lack of liquidity)</small>';
+                }
+                
+                // Her zaman WAVG calculation uygula
+                console.log(`💡 ${exchange}: Using WAVG calculation`);
+                
+                // WAVG hesabı: (whitebit_amount * whitebit_price * commission) + ((input - whitebit_amount) * whitebit_price)
+                const whiteBitPortion = askAmount * bestAsk * (1 + commissionRate);
+                const remainingPortion = (this.calculationAmount - askAmount) * bestAsk;
+                const totalAmount = this.calculationAmount;
+                
+                rawPrice = (whiteBitPortion + remainingPortion) / totalAmount;
+                
+                console.log(`💡 ${exchange}: WhiteBit portion: ${whiteBitPortion.toFixed(4)}`);
+                console.log(`💡 ${exchange}: Remaining portion: ${remainingPortion.toFixed(4)}`);
+                console.log(`💡 ${exchange}: WAVG raw price: ${rawPrice.toFixed(4)}`);
+            } else {
+                // CoinTR ve Binance için yeni mantık
+                commissionBaseAmount = this.calculationAmount;
+                
+                console.log(`💡 ${exchange}: Calculating price for ${this.calculationAmount} USDT`);
+                console.log(`💡 ${exchange}: Best ask: ${bestAsk}, Best ask amount: ${askAmount}`);
+                
+                if (this.calculationAmount > askAmount) {
+                    // Input > best ask amount: Weighted average calculation
+                    console.log(`💡 ${exchange}: Using weighted average (${this.calculationAmount} > ${askAmount})`);
+                    const result = this.calculateWeightedAveragePrice(orderbook.asks, this.calculationAmount);
+                    effectivePrice = result.weightedAvgPrice;
+                    
+                    console.log(`💡 ${exchange}: Weighted average price: ${effectivePrice.toFixed(4)}`);
+                    
+                    if (!result.canFill) {
+                        console.warn(`⚠️ ${exchange}: Cannot fill ${this.calculationAmount} USDT, max available: ${result.totalAmount}`);
+                        effectivePrice = result.weightedAvgPrice; // Use partial fill price
+                    }
+                } else {
+                    // Input < best ask amount: Use best ask price
+                    console.log(`💡 ${exchange}: Using best ask price (${this.calculationAmount} <= ${askAmount})`);
+                    effectivePrice = bestAsk;
+                }
+                
+                const commissionRate = commissionBps * 0.0001;
+                rawPrice = effectivePrice * (1 + commissionRate);
+            }
+            
+            // Commission hesaplaması
+            const commission = (effectivePrice * commissionBaseAmount * commissionBps) / 10000;
             const kdv = commission * 0.18;
-            const rawPrice = bestAsk * askAmount;
-            const netPrice = rawPrice + commission + kdv;
+            
+            // Net Price = Effective Price (weighted average or best ask)
+            const netPrice = effectivePrice;
+
+            // Tooltip hesaplamaları
+            const commissionTooltip = `Commission: ${this.formatPrice(effectivePrice)} × ${commissionBaseAmount.toLocaleString('tr-TR')} × ${commissionBps} bps / 10000 = ${this.formatPrice(commission)}`;
+            const kdvTooltip = `KDV: ${this.formatPrice(commission)} × 0.18 (18%) = ${this.formatPrice(kdv)}`;
+            
+            let rawPriceTooltip, netPriceTooltip;
+            
+            if (exchange === 'whitebit') {
+                // WhiteBit her zaman WAVG calculation tooltip gösterir
+                const commissionRate = commissionBps * 0.0001;
+                const whiteBitPortion = askAmount * bestAsk * (1 + commissionRate);
+                const remainingPortion = (this.calculationAmount - askAmount) * bestAsk;
+                rawPriceTooltip = `Raw Price (WAVG): (${this.formatAmount(askAmount)} × ${this.formatPrice(bestAsk)} × ${(1 + commissionRate).toFixed(4)} + ${(this.calculationAmount - askAmount).toLocaleString('tr-TR')} × ${this.formatPrice(bestAsk)}) / ${this.calculationAmount.toLocaleString('tr-TR')} = ${this.formatPrice(rawPrice)}`;
+                netPriceTooltip = `Net Price: Best Ask = ${this.formatPrice(netPrice)}`;
+            } else {
+                // CoinTR and Binance tooltips
+                rawPriceTooltip = this.calculationAmount > askAmount 
+                    ? `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(rawPrice)}`
+                    : `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(rawPrice)}`;
+                netPriceTooltip = this.calculationAmount > askAmount 
+                    ? `Net Price: Weighted Average = ${this.formatPrice(netPrice)}`
+                    : `Net Price: Best Ask = ${this.formatPrice(netPrice)}`;
+            }
 
             html += `
                 <tr>
@@ -296,10 +471,10 @@ class OrderbookManager {
                     <td class="bid-price">${this.formatPrice(bestBid)}</td>
                     <td class="ask-price">${this.formatPrice(bestAsk)}</td>
                     <td>${this.formatAmount(askAmount)}</td>
-                    <td>${this.formatPrice(commission)}</td>
-                    <td>${this.formatPrice(kdv)}</td>
-                    <td>${this.formatPrice(rawPrice)}</td>
-                    <td>${this.formatPrice(netPrice)}</td>
+                    <td title="${commissionTooltip}">${this.formatPrice(commission)}</td>
+                    <td title="${kdvTooltip}">${this.formatPrice(kdv)}</td>
+                    <td title="${rawPriceTooltip}">${this.formatPrice(rawPrice)}${liquidityWarning}</td>
+                    <td title="${netPriceTooltip}">${this.formatPrice(netPrice)}</td>
                 </tr>
             `;
         });
@@ -311,6 +486,13 @@ class OrderbookManager {
         return parseFloat(price).toFixed(2);
     }
 
+    formatTotalPrice(price) {
+        return parseFloat(price).toLocaleString('tr-TR', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        });
+    }
+
     formatAmount(amount) {
         return parseFloat(amount).toLocaleString('tr-TR', {
             minimumFractionDigits: 2,
@@ -319,11 +501,30 @@ class OrderbookManager {
     }
 
     updateStatus(status, color) {
-        const statusElements = document.querySelectorAll('.status-indicator');
-        statusElements.forEach(element => {
-            element.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-            element.style.color = color;
+        const statusIcons = document.querySelectorAll('.status-icon');
+        
+        statusIcons.forEach(icon => {
+            // Remove all status classes
+            icon.classList.remove('status-connected', 'status-updating', 'status-error', 'status-connecting');
+            
+            // Always use heartbeat icon with different status colors
+            switch(status.toLowerCase()) {
+                case 'connected':
+                    icon.className = 'fas fa-heartbeat status-icon status-connected';
+                    break;
+                case 'updating':
+                    icon.className = 'fas fa-heartbeat status-icon status-updating';
+                    break;
+                case 'error':
+                    icon.className = 'fas fa-heartbeat status-icon status-error';
+                    break;
+                case 'connecting':
+                default:
+                    icon.className = 'fas fa-heartbeat status-icon status-connecting';
+                    break;
+            }
         });
+        
         this.connectionStatus = status;
     }
 

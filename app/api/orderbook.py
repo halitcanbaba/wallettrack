@@ -142,6 +142,10 @@ async def get_orderbook_config() -> Dict:
     try:
         return {
             "success": True,
+            "binance_commission": binance_service.commission_bps,
+            "cointr_commission": cointr_service.commission_bps,
+            "whitebit_commission": whitebit_service.commission_bps,
+            "kdv_rate": binance_service.kdv_rate,
             "config": {
                 "exchanges": {
                     "binance": {
@@ -182,8 +186,6 @@ async def get_whitebit_orderbook(symbol: str = "USDT_TRY", limit: int = 20) -> D
         Dict containing orderbook data or error
     """
     try:
-        logger.info(f"🔍 Getting WhiteBit orderbook for {symbol}")
-        
         # Get orderbook from WhiteBit service
         orderbook_data = await whitebit_service.get_orderbook(symbol, limit)
         
@@ -221,8 +223,6 @@ async def get_cointr_orderbook(symbol: str = "USDTTRY", limit: int = 20) -> Dict
         Dict containing orderbook data or error
     """
     try:
-        logger.info(f"🔍 Getting CoinTR orderbook for {symbol}")
-        
         # Get orderbook from CoinTR service
         orderbook_data = await cointr_service.get_orderbook(symbol, limit)
         

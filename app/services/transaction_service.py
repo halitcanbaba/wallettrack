@@ -24,16 +24,11 @@ class TransactionService:
             cache_key = get_transaction_cache_key(limit, hours)
             cached_result = transaction_cache.get(cache_key)
             if cached_result is not None:
-                logger.info(f"🚀 Cache HIT: Returning {len(cached_result)} transactions from cache")
                 return cached_result
-            
-            logger.info(f"⏳ Cache MISS: Fetching fresh data...")
             
             # Calculate cutoff time for "recent" transactions
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
             cutoff_timestamp = int(cutoff_time.timestamp())
-            
-            logger.info(f"Fetching transactions from last {hours} hours (since {cutoff_time.isoformat()})")
             
             # Get all active wallets
             result = await db.execute(
@@ -42,7 +37,6 @@ class TransactionService:
                 .where(Wallet.is_active == True)
             )
             wallets = result.scalars().all()
-            logger.info(f"Found {len(wallets)} active wallets for transactions")
             
             all_transactions = []
             
@@ -139,23 +133,12 @@ class TransactionService:
             # Debug: Show breakdown before limiting
             eth_total = len([tx for tx in all_transactions if tx.get('blockchain') == 'ETH'])
             tron_total = len([tx for tx in all_transactions if tx.get('blockchain') == 'TRON'])
-            logger.info(f"Before limiting: {eth_total} ETH, {tron_total} TRON, total: {len(all_transactions)}")
-            
             recent_count = len(all_transactions[:limit])
             total_count = len(all_transactions)
             
-            # Debug: Show breakdown after limiting
-            limited_transactions = all_transactions[:limit]
-            eth_limited = len([tx for tx in limited_transactions if tx.get('blockchain') == 'ETH'])
-            tron_limited = len([tx for tx in limited_transactions if tx.get('blockchain') == 'TRON'])
-            logger.info(f"After limiting to {limit}: {eth_limited} ETH, {tron_limited} TRON")
-            
-            logger.info(f"Found {total_count} recent transactions (last {hours}h), returning top {recent_count}")
-            
             # Cache the result
-            final_result = limited_transactions
+            final_result = all_transactions[:limit]
             transaction_cache.set(cache_key, final_result, ttl=30)  # Cache for 30 seconds
-            logger.info(f"💾 Cached {len(final_result)} transactions")
             
             # Send WebSocket notification for new transactions
             if all_transactions:
