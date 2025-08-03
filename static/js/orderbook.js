@@ -7,7 +7,8 @@ class OrderbookManager {
         this.orderbooks = {
             binance: { bids: [], asks: [] },
             cointr: { bids: [], asks: [] },
-            whitebit: { bids: [], asks: [] }
+            whitebit: { bids: [], asks: [] },
+            okx: { bids: [], asks: [] }
         };
         this.connectionStatus = 'connecting';
         this.config = null;
@@ -23,6 +24,7 @@ class OrderbookManager {
         this.orderbooks.binance = this.generateMockOrderbook();
         this.orderbooks.cointr = this.generateMockOrderbook();
         this.orderbooks.whitebit = this.generateMockOrderbook();
+        this.orderbooks.okx = this.generateMockOrderbook();
     }
 
     async init() {
@@ -89,7 +91,8 @@ class OrderbookManager {
                 this.config = {
                     binance_commission: 10,
                     whitebit_commission: 10,
-                    cointr_commission: 15
+                    cointr_commission: 15,
+                    okx_commission: 8.5
                 };
             }
         } catch (error) {
@@ -98,7 +101,9 @@ class OrderbookManager {
             this.config = {
                 binance_commission: 10,
                 whitebit_commission: 10,
-                cointr_commission: 15
+                cointr_commission: 15,
+                okx_commission: 8.5,
+                paribu_commission: 7.5
             };
         }
     }
@@ -178,6 +183,31 @@ class OrderbookManager {
         }
     }
 
+    async fetchOKXOrderbook() {
+        try {
+            const response = await fetch('/api/orderbook/okx');
+            if (response.ok) {
+                const result = await response.json();
+                console.log('📊 OKX API response:', result);
+                
+                // Extract data from API response
+                if (result.success && result.data) {
+                    this.orderbooks.okx = result.data;
+                    console.log('📊 OKX orderbook updated');
+                } else {
+                    console.error('❌ Invalid OKX response structure:', result);
+                    this.orderbooks.okx = this.generateMockOrderbook();
+                }
+            } else {
+                console.error('❌ OKX fetch failed:', response.status);
+                this.orderbooks.okx = this.generateMockOrderbook();
+            }
+        } catch (error) {
+            console.error('❌ OKX fetch error:', error);
+            this.orderbooks.okx = this.generateMockOrderbook();
+        }
+    }
+
     generateMockOrderbook() {
         const basePrice = 32.15 + (Math.random() - 0.5) * 0.5;
         const bids = [];
@@ -204,7 +234,8 @@ class OrderbookManager {
             await Promise.all([
                 this.fetchBinanceOrderbook(),
                 this.fetchWhiteBitOrderbook(),
-                this.fetchCoinTROrderbook()
+                this.fetchCoinTROrderbook(),
+                this.fetchOKXOrderbook()
             ]);
             
             this.renderOrderbooks();
@@ -229,6 +260,7 @@ class OrderbookManager {
         this.renderOrderbook('binance', this.orderbooks.binance);
         this.renderOrderbook('cointr', this.orderbooks.cointr);
         this.renderOrderbook('whitebit', this.orderbooks.whitebit);
+        this.renderOrderbook('okx', this.orderbooks.okx);
     }
 
     renderOrderbook(exchange, orderbook) {
@@ -254,10 +286,20 @@ class OrderbookManager {
         const bids = orderbook.bids.slice(0, 8);
         const asks = orderbook.asks.slice(0, 8).reverse();
         
-        const bestBid = parseFloat(bids[0][0]);
-        const bestAsk = parseFloat(asks[asks.length - 1][0]);
-        const spread = bestAsk - bestBid;
-        const spreadPercent = ((spread / bestAsk) * 100).toFixed(2);
+        // Helper function to extract price and amount from both array and object formats
+        const extractPriceAmount = (item) => {
+            if (Array.isArray(item)) {
+                return { price: parseFloat(item[0]), amount: parseFloat(item[1]) };
+            } else if (typeof item === 'object' && item.price !== undefined && item.amount !== undefined) {
+                return { price: parseFloat(item.price), amount: parseFloat(item.amount) };
+            }
+            return { price: 0, amount: 0 };
+        };
+        
+        const bestBidData = extractPriceAmount(bids[0]);
+        const bestAskData = extractPriceAmount(asks[asks.length - 1]);
+        const spread = bestAskData.price - bestBidData.price;
+        const spreadPercent = ((spread / bestAskData.price) * 100).toFixed(2);
 
         let html = '<table class="orderbook-table">';
         
@@ -270,8 +312,7 @@ class OrderbookManager {
         `;
 
         asks.forEach(ask => {
-            const price = parseFloat(ask[0]);
-            const amount = parseFloat(ask[1]);
+            const { price, amount } = extractPriceAmount(ask);
             const total = price * amount;
             html += `
                 <tr class="ask-row">
@@ -291,8 +332,7 @@ class OrderbookManager {
         `;
 
         bids.forEach(bid => {
-            const price = parseFloat(bid[0]);
-            const amount = parseFloat(bid[1]);
+            const { price, amount } = extractPriceAmount(bid);
             const total = price * amount;
             html += `
                 <tr class="bid-row">
@@ -322,9 +362,18 @@ class OrderbookManager {
         let totalAmountFilled = 0;
         let remainingAmount = targetAmount;
 
-        for (const [price, amount] of asks) {
-            const askPrice = parseFloat(price);
-            const askAmount = parseFloat(amount);
+        // Helper function to extract price and amount from both array and object formats
+        const extractPriceAmount = (item) => {
+            if (Array.isArray(item)) {
+                return { price: parseFloat(item[0]), amount: parseFloat(item[1]) };
+            } else if (typeof item === 'object' && item.price !== undefined && item.amount !== undefined) {
+                return { price: parseFloat(item.price), amount: parseFloat(item.amount) };
+            }
+            return { price: 0, amount: 0 };
+        };
+
+        for (const ask of asks) {
+            const { price: askPrice, amount: askAmount } = extractPriceAmount(ask);
             
             if (remainingAmount <= 0) break;
             
@@ -351,7 +400,7 @@ class OrderbookManager {
             return;
         }
 
-        const exchanges = ['binance', 'cointr', 'whitebit'];
+        const exchanges = ['binance', 'cointr', 'whitebit', 'okx'];
         let html = '';
 
         exchanges.forEach(exchange => {
@@ -362,17 +411,30 @@ class OrderbookManager {
                 return;
             }
 
-            const bestBid = parseFloat(orderbook.bids[0][0]);
-            const bestAsk = parseFloat(orderbook.asks[0][0]);
-            const askAmount = parseFloat(orderbook.asks[0][1]); // API'den gelen amount
+            // Helper function to extract price and amount from both array and object formats
+            const extractPriceAmount = (item) => {
+                if (Array.isArray(item)) {
+                    return { price: parseFloat(item[0]), amount: parseFloat(item[1]) };
+                } else if (typeof item === 'object' && item.price !== undefined && item.amount !== undefined) {
+                    return { price: parseFloat(item.price), amount: parseFloat(item.amount) };
+                }
+                return { price: 0, amount: 0 };
+            };
+
+            const bestBidData = extractPriceAmount(orderbook.bids[0]);
+            const bestAskData = extractPriceAmount(orderbook.asks[0]);
+            const bestBid = bestBidData.price;
+            const bestAsk = bestAskData.price;
+            const askAmount = bestAskData.amount; // API'den gelen amount
             
             // Binance best ask amount'u al (WhiteBit liquidity kontrolü için)
             const binanceBestAskAmount = this.orderbooks.binance && this.orderbooks.binance.asks && this.orderbooks.binance.asks.length > 0 
-                ? parseFloat(this.orderbooks.binance.asks[0][1]) : 0;
+                ? extractPriceAmount(this.orderbooks.binance.asks[0]).amount : 0;
             
             // .env'den gelen BPS değeri ile commission hesapla
             const commissionBps = this.config ? this.config[`${exchange}_commission`] : 
-                (exchange === 'cointr' ? 15 : 10);
+                (exchange === 'cointr' ? 15 : 
+                 exchange === 'okx' ? 8.5 : 10);
             
             // Commission hesaplaması için miktar belirleme ve fiyat hesaplama
             let commissionBaseAmount, rawPrice, effectivePrice, liquidityWarning = '';
@@ -407,7 +469,7 @@ class OrderbookManager {
                 console.log(`💡 ${exchange}: Remaining portion: ${remainingPortion.toFixed(4)}`);
                 console.log(`💡 ${exchange}: WAVG raw price: ${rawPrice.toFixed(4)}`);
             } else {
-                // CoinTR ve Binance için yeni mantık
+                // CoinTR, Binance, OKX ve Paribu için yeni mantık
                 commissionBaseAmount = this.calculationAmount;
                 
                 console.log(`💡 ${exchange}: Calculating price for ${this.calculationAmount} USDT`);
@@ -441,7 +503,7 @@ class OrderbookManager {
                 // WhiteBit: commissionBaseAmount * commissionBps / 10000
                 commission = (commissionBaseAmount * commissionBps) / 10000;
             } else {
-                // CoinTR ve Binance: input * commissionBps / 10000  
+                // CoinTR, Binance, OKX ve Paribu: input * commissionBps / 10000  
                 commission = (this.calculationAmount * commissionBps) / 10000;
             }
             const kdv = commission * 0.18; // KDV bizim gelirimiz
@@ -471,7 +533,7 @@ class OrderbookManager {
                 const remainingPortion = (this.calculationAmount - askAmount) * bestAsk;
                 rawPriceTooltip = `Raw Price (WAVG): (${this.formatAmount(askAmount)} × ${this.formatPrice(bestAsk)} × ${(1 + commissionRate).toFixed(4)} + ${(this.calculationAmount - askAmount).toLocaleString('tr-TR')} × ${this.formatPrice(bestAsk)}) / ${this.calculationAmount.toLocaleString('tr-TR')} = ${this.formatPrice(finalRawPrice)}`;
             } else {
-                // CoinTR and Binance tooltips
+                // CoinTR, Binance, OKX ve Paribu tooltips
                 rawPriceTooltip = this.calculationAmount > askAmount 
                     ? `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(finalRawPrice)}`
                     : `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(finalRawPrice)}`;

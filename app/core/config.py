@@ -31,6 +31,7 @@ DUST_FILTER_THRESHOLD = 0.000001  # Filter out dust transactions
 BINANCE_COMMISSION_BPS = float(os.getenv("BINANCE_COMMISSION_BPS", "10"))  # 10 bps = 0.1%
 COINTR_COMMISSION_BPS = float(os.getenv("COINTR_COMMISSION_BPS", "15"))    # 15 bps = 0.15%
 WHITEBIT_COMMISSION_BPS = float(os.getenv("WHITEBIT_COMMISSION_BPS", "10")) # 10 bps = 0.1%
+OKX_COMMISSION_BPS = float(os.getenv("OKX_COMMISSION_BPS", "8.5"))         # 8.5 bps = 0.085%
 KDV_RATE = float(os.getenv("KDV_RATE", "0.20"))                         # 20% KDV
 
 # Binance API Configuration
@@ -43,4 +44,9 @@ WHITEBIT_STREAM_URL = os.getenv("WHITEBIT_STREAM_URL", "wss://api.whitebit.com/w
 
 # CoinTR API Configuration
 COINTR_BASE_URL = os.getenv("COINTR_BASE_URL", "https://api.cointr.com")
+COINTR_STREAM_URL = os.getenv("COINTR_STREAM_URL", "wss://api.cointr.com/ws")
+
+# OKX API Configuration
+OKX_BASE_URL = os.getenv("OKX_BASE_URL", "https://www.okx.com")
+OKX_STREAM_URL = os.getenv("OKX_STREAM_URL", "wss://ws.okx.com:8443/ws/v5/public")
 COINTR_STREAM_URL = os.getenv("COINTR_STREAM_URL", "wss://api.cointr.com/ws")

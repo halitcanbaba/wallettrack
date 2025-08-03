@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from app.services.binance_service import binance_service
 from app.services.whitebit_service import whitebit_service
 from app.services.cointr_service import cointr_service
+from app.services.okx_service import okx_service
 from app.core.dependencies import logger
 
 router = APIRouter(prefix="/api/orderbook", tags=["orderbook"])
@@ -244,5 +245,42 @@ async def get_cointr_orderbook(symbol: str = "USDTTRY", limit: int = 20) -> Dict
     
     except Exception as e:
         error_msg = f"Error fetching CoinTR orderbook: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
+
+@router.get("/okx")
+async def get_okx_orderbook(symbol: str = "USDT-TRY", limit: int = 20) -> Dict:
+    """
+    Get OKX orderbook data
+    
+    Args:
+        symbol: Trading pair symbol (default: USDT-TRY) 
+        limit: Number of levels to return
+    
+    Returns:
+        Dict containing orderbook data or error
+    """
+    try:
+        # Get orderbook from OKX service
+        orderbook_data = await okx_service.get_orderbook(symbol, limit)
+        
+        if orderbook_data:
+            return {
+                "success": True,
+                "data": orderbook_data,
+                "exchange": "okx",
+                "symbol": symbol
+            }
+        else:
+            logger.warning(f"⚠️ OKX orderbook returned no data for {symbol}")
+            return {
+                "success": False,
+                "error": "No orderbook data available",
+                "exchange": "okx",
+                "symbol": symbol
+            }
+    
+    except Exception as e:
+        error_msg = f"Error fetching OKX orderbook: {str(e)}"
         logger.error(f"❌ {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
