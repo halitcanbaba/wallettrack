@@ -435,45 +435,64 @@ class OrderbookManager {
                 rawPrice = effectivePrice * (1 + commissionRate);
             }
             
-            // Commission hesaplaması
-            const commission = (effectivePrice * commissionBaseAmount * commissionBps) / 10000;
-            const kdv = commission * 0.18;
+            // Commission hesaplaması - Exchange'e göre farklı
+            let commission;
+            if (exchange === 'whitebit') {
+                // WhiteBit: commissionBaseAmount * commissionBps / 10000
+                commission = (commissionBaseAmount * commissionBps) / 10000;
+            } else {
+                // CoinTR ve Binance: input * commissionBps / 10000  
+                commission = (this.calculationAmount * commissionBps) / 10000;
+            }
+            const kdv = commission * 0.18; // KDV bizim gelirimiz
             
-            // Net Price = Effective Price (weighted average or best ask)
-            const netPrice = effectivePrice;
+            // Raw Price = Base price + Commission (commission dahil toplam fiyat)
+            const finalRawPrice = rawPrice;
+            
+            // Net Price = (Raw Price * Input) / (Input + KDV)
+            // Bu formül gerçek birim maliyetimizi verir
+            const netPrice = (finalRawPrice * this.calculationAmount) / (this.calculationAmount + kdv);
 
             // Tooltip hesaplamaları
-            const commissionTooltip = `Commission: ${this.formatPrice(effectivePrice)} × ${commissionBaseAmount.toLocaleString('tr-TR')} × ${commissionBps} bps / 10000 = ${this.formatPrice(commission)}`;
+            let commissionTooltip;
+            if (exchange === 'whitebit') {
+                commissionTooltip = `Commission: ${commissionBaseAmount.toLocaleString('tr-TR')} × ${commissionBps} bps / 10000 = ${this.formatPrice(commission)}`;
+            } else {
+                commissionTooltip = `Commission: ${this.calculationAmount.toLocaleString('tr-TR')} × ${commissionBps} bps / 10000 = ${this.formatPrice(commission)}`;
+            }
             const kdvTooltip = `KDV: ${this.formatPrice(commission)} × 0.18 (18%) = ${this.formatPrice(kdv)}`;
             
-            let rawPriceTooltip, netPriceTooltip;
+            let rawPriceTooltip;
             
             if (exchange === 'whitebit') {
                 // WhiteBit her zaman WAVG calculation tooltip gösterir
                 const commissionRate = commissionBps * 0.0001;
                 const whiteBitPortion = askAmount * bestAsk * (1 + commissionRate);
                 const remainingPortion = (this.calculationAmount - askAmount) * bestAsk;
-                rawPriceTooltip = `Raw Price (WAVG): (${this.formatAmount(askAmount)} × ${this.formatPrice(bestAsk)} × ${(1 + commissionRate).toFixed(4)} + ${(this.calculationAmount - askAmount).toLocaleString('tr-TR')} × ${this.formatPrice(bestAsk)}) / ${this.calculationAmount.toLocaleString('tr-TR')} = ${this.formatPrice(rawPrice)}`;
-                netPriceTooltip = `Net Price: Best Ask = ${this.formatPrice(netPrice)}`;
+                rawPriceTooltip = `Raw Price (WAVG): (${this.formatAmount(askAmount)} × ${this.formatPrice(bestAsk)} × ${(1 + commissionRate).toFixed(4)} + ${(this.calculationAmount - askAmount).toLocaleString('tr-TR')} × ${this.formatPrice(bestAsk)}) / ${this.calculationAmount.toLocaleString('tr-TR')} = ${this.formatPrice(finalRawPrice)}`;
             } else {
                 // CoinTR and Binance tooltips
                 rawPriceTooltip = this.calculationAmount > askAmount 
-                    ? `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(rawPrice)}`
-                    : `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(rawPrice)}`;
-                netPriceTooltip = this.calculationAmount > askAmount 
-                    ? `Net Price: Weighted Average = ${this.formatPrice(netPrice)}`
-                    : `Net Price: Best Ask = ${this.formatPrice(netPrice)}`;
+                    ? `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(finalRawPrice)}`
+                    : `Raw Price: ${this.formatPrice(effectivePrice)} × (1 + ${commissionBps} bps) = ${this.formatPrice(effectivePrice)} × ${(1 + commissionBps * 0.0001).toFixed(4)} = ${this.formatPrice(finalRawPrice)}`;
             }
+            
+            const netPriceTooltip = `Net Price: (${this.formatPrice(finalRawPrice)} × ${this.calculationAmount.toLocaleString('tr-TR')}) / (${this.calculationAmount.toLocaleString('tr-TR')} + ${this.formatPrice(kdv)}) = ${this.formatPrice(netPrice)}`;
+
+            // Binance'i disabled olarak göster
+            const isDisabled = exchange === 'binance';
+            const disabledStyle = isDisabled ? 'opacity: 0.5; color: #666;' : '';
+            const disabledText = isDisabled ? ' (DISABLED)' : '';
 
             html += `
-                <tr>
-                    <td>${exchange.toUpperCase()}</td>
+                <tr style="${disabledStyle}">
+                    <td>${exchange.toUpperCase()}${disabledText}</td>
                     <td class="bid-price">${this.formatPrice(bestBid)}</td>
                     <td class="ask-price">${this.formatPrice(bestAsk)}</td>
                     <td>${this.formatAmount(askAmount)}</td>
                     <td title="${commissionTooltip}">${this.formatPrice(commission)}</td>
                     <td title="${kdvTooltip}">${this.formatPrice(kdv)}</td>
-                    <td title="${rawPriceTooltip}">${this.formatPrice(rawPrice)}${liquidityWarning}</td>
+                    <td title="${rawPriceTooltip}">${this.formatPrice(finalRawPrice)}${liquidityWarning}</td>
                     <td title="${netPriceTooltip}">${this.formatPrice(netPrice)}</td>
                 </tr>
             `;
