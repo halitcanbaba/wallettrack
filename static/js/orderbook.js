@@ -12,7 +12,7 @@ class OrderbookManager {
         };
         this.connectionStatus = 'connecting';
         this.config = null;
-        this.calculationAmount = 200000; // Default 200k
+        this.calculationAmount = 50000; // Default 50k
         this.currentSymbol = 'USDTTRY'; // Default symbol
         
         // Initialize with mock data to prevent errors
