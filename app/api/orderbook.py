@@ -146,6 +146,7 @@ async def get_orderbook_config() -> Dict:
             "binance_commission": binance_service.commission_bps,
             "cointr_commission": cointr_service.commission_bps,
             "whitebit_commission": whitebit_service.commission_bps,
+            "okx_commission": okx_service.commission_bps,
             "kdv_rate": binance_service.kdv_rate,
             "config": {
                 "exchanges": {
@@ -163,6 +164,11 @@ async def get_orderbook_config() -> Dict:
                         "commission_bps": whitebit_service.commission_bps,
                         "commission_percent": whitebit_service.commission_bps / 100,
                         "kdv_rate": whitebit_service.kdv_rate
+                    },
+                    "okx": {
+                        "commission_bps": okx_service.commission_bps,
+                        "commission_percent": okx_service.commission_bps / 100,
+                        "kdv_rate": okx_service.kdv_rate
                     }
                 },
                 "default_symbol": "USDTTRY",

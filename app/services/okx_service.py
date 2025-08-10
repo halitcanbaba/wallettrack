@@ -6,7 +6,7 @@ Handles orderbook and market data from OKX Exchange
 import httpx
 import logging
 from typing import Dict, List, Optional, Any
-from app.core.config import OKX_BASE_URL
+from app.core.config import OKX_BASE_URL, OKX_COMMISSION_BPS, KDV_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,29 @@ class OKXService:
     def __init__(self):
         self.base_url = OKX_BASE_URL
         self.api_url = f"{self.base_url}/api/v5"
+        self.commission_bps = OKX_COMMISSION_BPS
+        self.kdv_rate = KDV_RATE
+        
+    def calculate_commission(self, amount: float) -> float:
+        """Calculate commission from amount using bps"""
+        return amount * (self.commission_bps / 10000)
+    
+    def calculate_kdv(self, commission: float) -> float:
+        """Calculate KDV from commission"""
+        return commission * self.kdv_rate
+    
+    def calculate_net_price(self, price: float, amount: float) -> Dict[str, float]:
+        """Calculate all price components"""
+        commission = self.calculate_commission(amount)
+        kdv = self.calculate_kdv(commission)
+        net_price = price - commission - kdv
+        
+        return {
+            "raw_price": price,
+            "commission": commission,
+            "kdv": kdv,
+            "net_price": net_price
+        }
         
     async def get_orderbook(self, symbol: str = "USDT-TRY", limit: int = 20) -> Optional[Dict]:
         """
