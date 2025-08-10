@@ -252,13 +252,123 @@
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.7; transform: scale(1.05); }
         }
+        
+        /* Symbol Selector Styles */
+        .symbol-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 20px;
+        }
+        
+        .symbol-dropdown {
+            position: relative;
+        }
+        
+        .symbol-select {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 8px 12px;
+            font-size: 12px;
+            border-radius: 4px;
+            outline: none;
+            cursor: text;
+            min-width: 150px;
+            max-width: 200px;
+        }
+        
+        .symbol-select:hover {
+            border-color: #666;
+            background: #333;
+        }
+        
+        .symbol-select:focus {
+            border-color: #888;
+        }
+        
+        .symbol-dropdown-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .symbol-dropdown-item {
+            padding: 8px 12px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            border-bottom: 1px solid #333;
+        }
+        
+        .symbol-dropdown-item:last-child {
+            border-bottom: none;
+        }
+        
+        .symbol-dropdown-item:hover {
+            background: #333;
+        }
+        
+        .symbol-dropdown-item.highlighted {
+            background: #444;
+        }
+        
+        .search-btn {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .search-btn:hover {
+            background: linear-gradient(135deg, #357abd, #2a6ba8);
+            transform: translateY(-1px);
+        }
+        
+        .search-btn:active {
+            transform: translateY(0);
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <div class="logo">WALLETTRACK PRO - ORDERBOOK</div>
+            <div class="logo">
+                WALLETTRACK PRO - ORDERBOOK
+                <div class="symbol-selector">
+                    <div class="symbol-dropdown">
+                        <input id="symbol-select" class="symbol-select" value="USDTTRY" placeholder="Symbol seçin veya yazın..." autocomplete="off">
+                        <div id="symbol-dropdown-list" class="symbol-dropdown-list">
+                            <!-- Dropdown options will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    <button id="search-btn" class="search-btn">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
             <div class="header-actions">
                 <div class="status-indicator">
                     <i class="fas fa-heartbeat status-icon status-connecting"></i>

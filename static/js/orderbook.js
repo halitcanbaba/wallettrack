@@ -13,6 +13,7 @@ class OrderbookManager {
         this.connectionStatus = 'connecting';
         this.config = null;
         this.calculationAmount = 200000; // Default 200k
+        this.currentSymbol = 'USDTTRY'; // Default symbol
         
         // Initialize with mock data to prevent errors
         this.initializeMockData();
@@ -110,7 +111,9 @@ class OrderbookManager {
 
     async fetchBinanceOrderbook() {
         try {
-            const response = await fetch('/api/orderbook/binance');
+            const symbol = this.currentSymbol || 'USDTTRY';
+            console.log('🔍 Binance: Fetching orderbook for symbol:', symbol);
+            const response = await fetch(`/api/orderbook/binance?symbol=${symbol}`);
             if (response.ok) {
                 const result = await response.json();
                 console.log('📊 Binance API response:', result);
@@ -121,21 +124,23 @@ class OrderbookManager {
                     console.log('📊 Binance orderbook updated');
                 } else {
                     console.error('❌ Invalid Binance response structure:', result);
-                    this.orderbooks.binance = this.generateMockOrderbook();
+                    this.orderbooks.binance = { bids: [], asks: [] }; // Empty for N/A display
                 }
             } else {
                 console.error('❌ Binance fetch failed:', response.status);
-                this.orderbooks.binance = this.generateMockOrderbook();
+                this.orderbooks.binance = { bids: [], asks: [] }; // Empty for N/A display
             }
         } catch (error) {
             console.error('❌ Binance fetch error:', error);
-            this.orderbooks.binance = this.generateMockOrderbook();
+            this.orderbooks.binance = { bids: [], asks: [] }; // Empty for N/A display
         }
     }
 
     async fetchWhiteBitOrderbook() {
         try {
-            const response = await fetch('/api/orderbook/whitebit');
+            const symbol = this.currentSymbol || 'USDTTRY';
+            console.log('🔍 WhiteBit: Fetching orderbook for symbol:', symbol);
+            const response = await fetch(`/api/orderbook/whitebit?symbol=${symbol}`);
             if (response.ok) {
                 const result = await response.json();
                 console.log('📊 WhiteBit API response:', result);
@@ -146,21 +151,23 @@ class OrderbookManager {
                     console.log('📊 WhiteBit orderbook updated');
                 } else {
                     console.error('❌ Invalid WhiteBit response structure:', result);
-                    this.orderbooks.whitebit = this.generateMockOrderbook();
+                    this.orderbooks.whitebit = { bids: [], asks: [] }; // Empty for N/A display
                 }
             } else {
                 console.error('❌ WhiteBit fetch failed:', response.status);
-                this.orderbooks.whitebit = this.generateMockOrderbook();
+                this.orderbooks.whitebit = { bids: [], asks: [] }; // Empty for N/A display
             }
         } catch (error) {
             console.error('❌ WhiteBit fetch error:', error);
-            this.orderbooks.whitebit = this.generateMockOrderbook();
+            this.orderbooks.whitebit = { bids: [], asks: [] }; // Empty for N/A display
         }
     }
 
     async fetchCoinTROrderbook() {
         try {
-            const response = await fetch('/api/orderbook/cointr');
+            const symbol = this.currentSymbol || 'USDTTRY';
+            console.log('🔍 CoinTR: Fetching orderbook for symbol:', symbol);
+            const response = await fetch(`/api/orderbook/cointr?symbol=${symbol}`);
             if (response.ok) {
                 const result = await response.json();
                 console.log('📊 CoinTR API response:', result);
@@ -171,21 +178,23 @@ class OrderbookManager {
                     console.log('📊 CoinTR orderbook updated');
                 } else {
                     console.error('❌ Invalid CoinTR response structure:', result);
-                    this.orderbooks.cointr = this.generateMockOrderbook();
+                    this.orderbooks.cointr = { bids: [], asks: [] }; // Empty for N/A display
                 }
             } else {
                 console.error('❌ CoinTR fetch failed:', response.status);
-                this.orderbooks.cointr = this.generateMockOrderbook();
+                this.orderbooks.cointr = { bids: [], asks: [] }; // Empty for N/A display
             }
         } catch (error) {
             console.error('❌ CoinTR fetch error:', error);
-            this.orderbooks.cointr = this.generateMockOrderbook();
+            this.orderbooks.cointr = { bids: [], asks: [] }; // Empty for N/A display
         }
     }
 
     async fetchOKXOrderbook() {
         try {
-            const response = await fetch('/api/orderbook/okx');
+            const symbol = this.currentSymbol || 'USDTTRY';
+            console.log('🔍 OKX: Fetching orderbook for symbol:', symbol);
+            const response = await fetch(`/api/orderbook/okx?symbol=${symbol}`);
             if (response.ok) {
                 const result = await response.json();
                 console.log('📊 OKX API response:', result);
@@ -196,15 +205,15 @@ class OrderbookManager {
                     console.log('📊 OKX orderbook updated');
                 } else {
                     console.error('❌ Invalid OKX response structure:', result);
-                    this.orderbooks.okx = this.generateMockOrderbook();
+                    this.orderbooks.okx = { bids: [], asks: [] }; // Empty for N/A display
                 }
             } else {
                 console.error('❌ OKX fetch failed:', response.status);
-                this.orderbooks.okx = this.generateMockOrderbook();
+                this.orderbooks.okx = { bids: [], asks: [] }; // Empty for N/A display
             }
         } catch (error) {
             console.error('❌ OKX fetch error:', error);
-            this.orderbooks.okx = this.generateMockOrderbook();
+            this.orderbooks.okx = { bids: [], asks: [] }; // Empty for N/A display
         }
     }
 
@@ -228,6 +237,7 @@ class OrderbookManager {
 
     async updateOrderbooks() {
         console.log('🔄 Updating all orderbooks...');
+        console.log('🔍 Current symbol in updateOrderbooks:', this.currentSymbol);
         this.updateStatus('updating', 'orange');
         
         try {
@@ -273,13 +283,13 @@ class OrderbookManager {
         // Safety checks for orderbook data
         if (!orderbook || !orderbook.bids || !orderbook.asks) {
             console.warn(`⚠️ Invalid orderbook data for ${exchange}:`, orderbook);
-            container.innerHTML = '<div class="orderbook-loading">Loading...</div>';
+            container.innerHTML = '<div class="orderbook-loading">N/A - Data not available</div>';
             return;
         }
 
         if (orderbook.bids.length === 0 || orderbook.asks.length === 0) {
             console.warn(`⚠️ Empty orderbook data for ${exchange}`);
-            container.innerHTML = '<div class="orderbook-loading">No data available</div>';
+            container.innerHTML = '<div class="orderbook-loading">N/A - Symbol not supported</div>';
             return;
         }
 
@@ -617,9 +627,233 @@ class OrderbookManager {
     }
 }
 
+// Symbol Dropdown Manager
+class SymbolDropdown {
+    constructor(inputElement, dropdownElement) {
+        this.input = inputElement;
+        this.dropdown = dropdownElement;
+        this.container = inputElement.parentElement; // Get the parent container for click detection
+        this.isOpen = false;
+        this.selectedIndex = -1;
+        
+        // Symbol lists
+        this.primarySymbols = [
+            { value: 'USDTTRY', label: 'USDT/TRY' },
+            { value: 'TRXTRY', label: 'TRX/TRY' },
+            { value: 'BTCTRY', label: 'BTC/TRY' },
+            { value: 'ETHTRY', label: 'ETH/TRY' }
+        ];
+        
+        this.allSymbols = [
+            { value: 'USDTTRY', label: 'USDT/TRY' },
+            { value: 'TRXTRY', label: 'TRX/TRY' },
+            { value: 'BTCTRY', label: 'BTC/TRY' },
+            { value: 'ETHTRY', label: 'ETH/TRY' },
+            { value: 'ADATRY', label: 'ADA/TRY' },
+            { value: 'DOGETRY', label: 'DOGE/TRY' },
+            { value: 'XRPTRY', label: 'XRP/TRY' },
+            { value: 'AVAXUSDT', label: 'AVAX/USDT' },
+            { value: 'SOLUSDT', label: 'SOL/USDT' },
+            { value: 'BNBUSDT', label: 'BNB/USDT' },
+            { value: 'ADAUSDT', label: 'ADA/USDT' },
+            { value: 'DOTUSDT', label: 'DOT/USDT' },
+            { value: 'LINKUSDT', label: 'LINK/USDT' },
+            { value: 'MATICUSDT', label: 'MATIC/USDT' },
+            { value: 'UNIUSDT', label: 'UNI/USDT' },
+            { value: 'ATOMUSDT', label: 'ATOM/USDT' }
+        ];
+        
+        this.init();
+    }
+    
+    init() {
+        // Input events
+        this.input.addEventListener('focus', () => this.showPrimarySymbols());
+        this.input.addEventListener('input', (e) => this.filterSymbols(e.target.value));
+        this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
+        this.input.addEventListener('blur', () => {
+            // Delay hiding to allow clicking on dropdown items
+            setTimeout(() => this.hide(), 150);
+        });
+        
+        // Click outside to close
+        document.addEventListener('click', (e) => {
+            if (!this.container.contains(e.target)) {
+                this.hide();
+            }
+        });
+    }
+    
+    showPrimarySymbols() {
+        this.renderSymbols(this.primarySymbols);
+        this.show();
+    }
+    
+    filterSymbols(query) {
+        if (!query.trim()) {
+            this.showPrimarySymbols();
+            return;
+        }
+        
+        const filtered = this.allSymbols.filter(symbol => 
+            symbol.value.toLowerCase().includes(query.toLowerCase()) ||
+            symbol.label.toLowerCase().includes(query.toLowerCase())
+        );
+        
+        console.log('🔍 Filtered symbols:', filtered.length);
+        this.renderSymbols(filtered);
+        this.show();
+    }
+    
+    renderSymbols(symbols) {
+        this.dropdown.innerHTML = '';
+        
+        symbols.forEach((symbol, index) => {
+            const item = document.createElement('div');
+            item.className = 'symbol-dropdown-item';
+            item.textContent = symbol.label;
+            item.setAttribute('data-value', symbol.value);
+            item.setAttribute('data-index', index);
+            
+            item.addEventListener('click', () => {
+                this.selectSymbol(symbol.value);
+            });
+            
+            this.dropdown.appendChild(item);
+        });
+        
+        this.selectedIndex = -1;
+    }
+    
+    selectSymbol(value) {
+        console.log('✅ Symbol selected:', value);
+        this.input.value = value;
+        this.hide();
+        
+        // Trigger change event
+        const event = new Event('change', { bubbles: true });
+        this.input.dispatchEvent(event);
+    }
+    
+    handleKeydown(e) {
+        const items = this.dropdown.querySelectorAll('.symbol-dropdown-item');
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
+                this.highlightItem();
+                break;
+                
+            case 'ArrowUp':
+                e.preventDefault();
+                this.selectedIndex = Math.max(this.selectedIndex - 1, -1);
+                this.highlightItem();
+                break;
+                
+            case 'Enter':
+                e.preventDefault();
+                if (this.selectedIndex >= 0 && items[this.selectedIndex]) {
+                    const value = items[this.selectedIndex].getAttribute('data-value');
+                    this.selectSymbol(value);
+                } else {
+                    // Trigger search with current input value
+                    const event = new Event('change', { bubbles: true });
+                    this.input.dispatchEvent(event);
+                    this.hide();
+                }
+                break;
+                
+            case 'Escape':
+                this.hide();
+                break;
+        }
+    }
+    
+    highlightItem() {
+        const items = this.dropdown.querySelectorAll('.symbol-dropdown-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('highlighted', index === this.selectedIndex);
+        });
+    }
+    
+    show() {
+        this.dropdown.style.display = 'block';
+        this.isOpen = true;
+    }
+    
+    hide() {
+        this.dropdown.style.display = 'none';
+        this.isOpen = false;
+        this.selectedIndex = -1;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🌐 DOM loaded, initializing OrderbookManager...');
     window.orderbookManager = new OrderbookManager();
+    
+    // Setup symbol selector
+    const symbolSelect = document.getElementById('symbol-select');
+    const symbolDropdownList = document.getElementById('symbol-dropdown-list');
+    const searchBtn = document.getElementById('search-btn');
+    
+    // Initialize custom dropdown
+    let symbolDropdown = null;
+    if (symbolSelect && symbolDropdownList) {
+        symbolDropdown = new SymbolDropdown(symbolSelect, symbolDropdownList);
+        console.log('✅ Symbol dropdown initialized');
+    }
+    
+    if (symbolSelect) {
+        console.log('✅ Symbol selector found, adding event listeners');
+        
+        // Change event for dropdown selection
+        symbolSelect.addEventListener('change', (e) => {
+            console.log('🔄 Symbol selector changed!');
+            console.log('🔄 New value:', e.target.value);
+            console.log('🔄 Previous symbol:', window.orderbookManager.currentSymbol);
+            
+            if (window.orderbookManager) {
+                window.orderbookManager.currentSymbol = e.target.value.toUpperCase();
+                console.log('🔄 Symbol changed to:', window.orderbookManager.currentSymbol);
+                // Stop current updates
+                if (window.orderbookManager.updateInterval) {
+                    clearInterval(window.orderbookManager.updateInterval);
+                    console.log('🛑 Stopped periodic updates');
+                }
+                // Update immediately with new symbol
+                window.orderbookManager.updateOrderbooks();
+                // Restart periodic updates
+                window.orderbookManager.startPeriodicUpdates();
+            }
+        });
+    } else {
+        console.error('❌ Symbol selector not found!');
+    }
+    
+    if (searchBtn) {
+        console.log('✅ Search button found, adding click listener');
+        searchBtn.addEventListener('click', () => {
+            console.log('🔍 Search button clicked!');
+            if (window.orderbookManager && symbolSelect) {
+                console.log('🔍 Current symbol value:', symbolSelect.value);
+                window.orderbookManager.currentSymbol = symbolSelect.value;
+                console.log('🔍 Search button clicked for symbol:', window.orderbookManager.currentSymbol);
+                // Stop current updates
+                if (window.orderbookManager.updateInterval) {
+                    clearInterval(window.orderbookManager.updateInterval);
+                    console.log('🛑 Stopped periodic updates');
+                }
+                // Update immediately with new symbol
+                window.orderbookManager.updateOrderbooks();
+                // Restart periodic updates
+                window.orderbookManager.startPeriodicUpdates();
+            }
+        });
+    } else {
+        console.error('❌ Search button not found!');
+    }
 });
 
 window.addEventListener('beforeunload', function() {
