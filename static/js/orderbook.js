@@ -228,8 +228,9 @@ class OrderbookManager {
             const bidAmount = (Math.random() * 10000 + 1000);
             const askAmount = (Math.random() * 10000 + 1000);
             
-            bids.push([bidPrice.toFixed(2), bidAmount.toFixed(2)]);
-            asks.push([askPrice.toFixed(2), askAmount.toFixed(2)]);
+            const formatting = this.getSymbolFormatting(this.currentSymbol || 'USDTTRY');
+            bids.push([bidPrice.toFixed(formatting.priceDecimals), bidAmount.toFixed(formatting.amountDecimals)]);
+            asks.push([askPrice.toFixed(formatting.priceDecimals), askAmount.toFixed(formatting.amountDecimals)]);
         }
         
         return { bids, asks };
@@ -310,14 +311,19 @@ class OrderbookManager {
         const bestAskData = extractPriceAmount(asks[asks.length - 1]);
         const spread = bestAskData.price - bestBidData.price;
         const spreadPercent = ((spread / bestAskData.price) * 100).toFixed(2);
+        const formatting = this.getSymbolFormatting(this.currentSymbol || 'USDTTRY');
 
         let html = '<table class="orderbook-table">';
         
+        // Dynamic headers based on symbol
+        const baseAsset = this.currentSymbol.replace(formatting.currency, '');
+        const quoteAsset = formatting.currency;
+        
         html += `
             <tr class="header-row">
-                <th>Price (TRY)</th>
-                <th>Amount (USDT)</th>
-                <th>Total (TRY)</th>
+                <th>Price (${quoteAsset})</th>
+                <th>Amount (${baseAsset})</th>
+                <th>Total (${quoteAsset})</th>
             </tr>
         `;
 
@@ -336,7 +342,7 @@ class OrderbookManager {
         html += `
             <tr class="spread-row">
                 <td colspan="3" style="text-align: center; font-weight: bold; color: #888;">
-                    Spread: ${spread.toFixed(2)} TRY (${spreadPercent}%)
+                    Spread: ${this.formatPrice(spread)} ${quoteAsset} (${spreadPercent}%)
                 </td>
             </tr>
         `;
@@ -573,8 +579,77 @@ class OrderbookManager {
         tbody.innerHTML = html;
     }
 
+    // Get formatting configuration based on symbol
+    getSymbolFormatting(symbol) {
+        const upperSymbol = symbol.toUpperCase();
+        
+        // Special case for USDTTRY
+        if (upperSymbol === 'USDTTRY') {
+            return {
+                priceDecimals: 2,  // 2 digits for TRY price
+                amountDecimals: 2, // 2 digits for USDT amount
+                currency: 'TRY'
+            };
+        }
+        
+        // For other symbols, detect precision from Binance data
+        return this.detectPrecisionFromData(upperSymbol);
+    }
+    
+    // Detect precision from actual Binance orderbook data
+    detectPrecisionFromData(symbol) {
+        const binanceData = this.orderbooks.binance;
+        let priceDecimals = 2;
+        let amountDecimals = 2;
+        let currency = 'UNKNOWN';
+        
+        // Extract currency from symbol
+        if (symbol.endsWith('TRY')) {
+            currency = 'TRY';
+        } else if (symbol.endsWith('USDT')) {
+            currency = 'USDT';
+        } else if (symbol.endsWith('BTC')) {
+            currency = 'BTC';
+        } else if (symbol.endsWith('ETH')) {
+            currency = 'ETH';
+        }
+        
+        // If we have Binance data, detect precision from it
+        if (binanceData && binanceData.asks && binanceData.asks.length > 0) {
+            try {
+                // Get first ask to analyze precision
+                const firstAsk = binanceData.asks[0];
+                const price = typeof firstAsk === 'string' ? firstAsk : firstAsk[0];
+                const amount = typeof firstAsk === 'string' ? binanceData.asks[0] : firstAsk[1];
+                
+                // Detect price decimals
+                const priceStr = price.toString();
+                const priceDotIndex = priceStr.indexOf('.');
+                priceDecimals = priceDotIndex === -1 ? 0 : priceStr.length - priceDotIndex - 1;
+                
+                // Detect amount decimals
+                const amountStr = amount.toString();
+                const amountDotIndex = amountStr.indexOf('.');
+                amountDecimals = amountDotIndex === -1 ? 0 : amountStr.length - amountDotIndex - 1;
+                
+                // Limit to reasonable ranges
+                priceDecimals = Math.min(Math.max(priceDecimals, 0), 8);
+                amountDecimals = Math.min(Math.max(amountDecimals, 0), 8);
+            } catch (e) {
+                console.log('Could not detect precision from data, using defaults');
+            }
+        }
+        
+        return {
+            priceDecimals,
+            amountDecimals,
+            currency
+        };
+    }
+
     formatPrice(price) {
-        return parseFloat(price).toFixed(2);
+        const formatting = this.getSymbolFormatting(this.currentSymbol || 'USDTTRY');
+        return parseFloat(price).toFixed(formatting.priceDecimals);
     }
 
     formatTotalPrice(price) {
@@ -585,9 +660,10 @@ class OrderbookManager {
     }
 
     formatAmount(amount) {
+        const formatting = this.getSymbolFormatting(this.currentSymbol || 'USDTTRY');
         return parseFloat(amount).toLocaleString('tr-TR', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: formatting.amountDecimals,
+            maximumFractionDigits: formatting.amountDecimals
         });
     }
 
