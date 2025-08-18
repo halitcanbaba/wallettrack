@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthetic Orderbook - WalletTrack Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/styles.css" rel="stylesheet">
+    <style>
+        .synthetics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .config-panel {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 30px;
+            height: fit-content;
+        }
+        
+        .results-panel {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 30px;
+            height: fit-content;
+        }
+        
+        .panel-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .leg-container {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .leg-grid {
+            display: grid;
+            grid-template-columns: 120px 150px 80px 80px auto;
+            gap: 16px;
+            align-items: center;
+        }
+        
+        .leg-select, .leg-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+        
+        .leg-select:focus, .leg-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+        
+        .leg-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .status-active { background: var(--success-color); }
+        .status-inactive { background: var(--error-color); }
+        
+        .remove-leg-btn {
+            background: var(--error-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .remove-leg-btn:hover {
+            background: #e74c3c;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            margin: 24px 0;
+        }
+        
+        .control-label {
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        
+        .depth-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            width: 80px;
+        }
+        
+        .auto-refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        
+        .orderbook-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+        
+        .orderbook-side {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .orderbook-title {
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .asks-title { color: var(--error-color); }
+        .bids-title { color: var(--success-color); }
+        
+        .orderbook-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .orderbook-table th {
+            background: var(--bg-primary);
+            padding: 12px 8px;
+            text-align: right;
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .orderbook-table td {
+            padding: 8px;
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .asks-row td { color: var(--error-color); }
+        .bids-row td { color: var(--success-color); }
+        
+        .placeholder {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 40px 20px;
+        }
+        
+        .placeholder i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        @media (max-width: 1200px) {
+            .synthetics-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .leg-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            
+            .orderbook-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">WALLETTRACK PRO</div>
+            <div class="header-actions">
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <button class="add-wallet-btn" onclick="window.location.href='/'" style="margin-right: 10px;">
+                    <i class="fas fa-home"></i> DASHBOARD
+                </button>
+                <button class="add-wallet-btn" onclick="window.location.href='/orderbook'" style="margin-right: 10px;">
+                    <i class="fas fa-chart-line"></i> ORDERBOOK
+                </button>
+                <button class="add-wallet-btn active">
+                    <i class="fas fa-link"></i> SYNTHETICS
+                </button>
+            </div>
+        </header>
+
+        <!-- Page Title -->
+        <div class="section-header" style="margin-top: 30px;">
+            <h1 class="section-title">🔗 Synthetic Orderbook</h1>
+            <div class="section-meta">Create synthetic trading pairs by chaining multiple exchanges</div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="synthetics-grid">
+            <!-- Left Panel: Configuration -->
+            <div class="config-panel">
+                <h2 class="panel-title">
+                    <i class="fas fa-cog"></i>
+                    Configuration
+                </h2>
+                
+                <div class="form-group">
+                    <label class="form-label">Trading Legs (2-6 legs)</label>
+                    <div id="legs-container">
+                        <!-- Legs will be added here dynamically -->
+                    </div>
+                    
+                    <button class="btn btn-secondary" onclick="syntheticOrderbook.addLeg()" style="margin-top: 16px;">
+                        <i class="fas fa-plus"></i> Add Leg
+                    </button>
+                </div>
+                
+                <div class="control-group">
+                    <div>
+                        <label class="control-label">Depth:</label>
+                        <input type="number" id="depth" class="depth-input" value="5" min="1" max="20">
+                    </div>
+                    
+                    <label class="auto-refresh-toggle">
+                        <input type="checkbox" id="auto-refresh-toggle" onchange="syntheticOrderbook.toggleAutoRefresh()">
+                        Auto-refresh (15s)
+                    </label>
+                </div>
+                
+                <button class="btn btn-primary" onclick="syntheticOrderbook.generateOrderbook()" style="width: 100%;">
+                    <i class="fas fa-play"></i> Generate Orderbook
+                </button>
+                
+                <div id="legs-info" style="margin-top: 24px;">
+                    <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-secondary);">Leg Status</h3>
+                    <div id="legs-status-list">
+                        <p style="color: var(--text-secondary); font-style: italic;">No legs configured yet</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel: Results -->
+            <div class="results-panel">
+                <div id="result-section" style="display: none;">
+                    <h2 class="panel-title">
+                        <i class="fas fa-chart-bar"></i>
+                        <span id="result-title">Synthetic Orderbook</span>
+                    </h2>
+                    
+                    <div class="orderbook-container">
+                        <div class="orderbook-side">
+                            <h3 class="orderbook-title asks-title">
+                                <i class="fas fa-arrow-up"></i>
+                                Asks (Sell Orders)
+                            </h3>
+                            <div class="table-container">
+                                <table class="orderbook-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Price</th>
+                                            <th>Amount</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="asks-table">
+                                        <!-- Asks will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="orderbook-side">
+                            <h3 class="orderbook-title bids-title">
+                                <i class="fas fa-arrow-down"></i>
+                                Bids (Buy Orders)
+                            </h3>
+                            <div class="table-container">
+                                <table class="orderbook-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Price</th>
+                                            <th>Amount</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bids-table">
+                                        <!-- Bids will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Placeholder when no results -->
+                <div id="no-results-placeholder" class="placeholder">
+                    <i class="fas fa-chart-line"></i>
+                    <h3>No Orderbook Generated</h3>
+                    <p>Configure trading legs on the left and click "Generate Orderbook" to see results.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/synthetics.js"></script>
+    <script>
+        // Initialize with default legs
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add default legs with proper values
+            syntheticOrderbook.addLeg('binance', 'ETHUSDT', 'sell');
+            syntheticOrderbook.addLeg('cointr', 'USDTTRY', 'sell');
+        });
+    </script>
+</body>
+</html>

@@ -12,7 +12,7 @@ setup_logging()
 
 from app.core.config import APP_TITLE, APP_DESCRIPTION, APP_VERSION
 from app.core.dependencies import lifespan, logger
-from app.api import wallets, transactions, balances, tokens, system, orderbook
+from app.api import wallets, transactions, balances, tokens, system, orderbook, synthetics
 from app.websocket_handler import websocket_endpoint
 
 # Create FastAPI app with lifespan management
@@ -39,6 +39,7 @@ app.include_router(balances.router)
 app.include_router(tokens.router)
 app.include_router(system.router)
 app.include_router(orderbook.router)
+app.include_router(synthetics.router)
 
 # Main page routes
 @app.get("/")
@@ -55,6 +56,11 @@ async def history_page(request: Request):
 async def orderbook_page(request: Request):
     """Serve the orderbook monitoring page"""
     return templates.TemplateResponse("orderbook.html", {"request": request})
+
+@app.get("/synthetics")
+async def synthetics_page(request: Request):
+    """Serve the synthetic orderbook page"""
+    return templates.TemplateResponse("synthetics.html", {"request": request})
 
 # WebSocket endpoint
 @app.websocket("/ws")
