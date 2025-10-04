@@ -38,8 +38,7 @@
                 <div class="form-group">
                     <label class="form-label">Network</label>
                     <select id="walletNetwork" class="form-select">
-                        <option value="ethereum">Ethereum</option>
-                        <option value="tron">TRON</option>
+                        <option value="">Loading networks...</option>
                     </select>
                 </div>
             </div>
@@ -111,10 +110,12 @@
     <script src="/static/js/wallet-tracker.js?v=5"></script>
     <script>
         // Initialize when DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             try {
                 console.log('DOM loaded, initializing WalletTracker...');
                 window.walletTracker = new WalletTracker();
+                // Load available blockchains for the form
+                await loadBlockchains();
             } catch (error) {
                 console.error('Failed to initialize WalletTracker:', error);
                 const tbody = document.getElementById('balanceTableBody');

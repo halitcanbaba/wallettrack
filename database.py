@@ -225,7 +225,23 @@ async def seed_initial_data():
                 explorer_url="https://tronscan.org"
             )
             
-            session.add_all([eth_blockchain, tron_blockchain])
+            btc_blockchain = Blockchain(
+                name="BTC",
+                display_name="Bitcoin",
+                native_symbol="BTC",
+                rpc_url="https://blockchain.info",
+                explorer_url="https://blockchain.com"
+            )
+            
+            solana_blockchain = Blockchain(
+                name="SOL",
+                display_name="Solana",
+                native_symbol="SOL",
+                rpc_url="https://api.mainnet-beta.solana.com",
+                explorer_url="https://solscan.io"
+            )
+            
+            session.add_all([eth_blockchain, tron_blockchain, btc_blockchain, solana_blockchain])
             await session.flush()  # Get IDs
             
             # Create native tokens
@@ -243,6 +259,22 @@ async def seed_initial_data():
                 blockchain_id=tron_blockchain.id,
                 is_native=True,
                 decimals=6
+            )
+            
+            btc_token = Token(
+                symbol="BTC",
+                name="Bitcoin",
+                blockchain_id=btc_blockchain.id,
+                is_native=True,
+                decimals=8
+            )
+            
+            sol_token = Token(
+                symbol="SOL",
+                name="Solana",
+                blockchain_id=solana_blockchain.id,
+                is_native=True,
+                decimals=9
             )
             
             # Create major ERC-20 tokens
@@ -267,7 +299,13 @@ async def seed_initial_data():
                 Token(symbol="USDT", name="Tether USD (TRC-20)", contract_address="TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", decimals=6, blockchain_id=tron_blockchain.id),
             ]
             
-            session.add_all([eth_token, trx_token] + eth_tokens + tron_tokens)
+            # Create major Solana SPL tokens
+            solana_tokens = [
+                Token(symbol="USDC", name="USD Coin (SOL)", contract_address="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals=6, blockchain_id=solana_blockchain.id),
+                Token(symbol="USDT", name="Tether USD (SOL)", contract_address="Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals=6, blockchain_id=solana_blockchain.id),
+            ]
+            
+            session.add_all([eth_token, trx_token, btc_token, sol_token] + eth_tokens + tron_tokens + solana_tokens)
             await session.commit()
             
         except Exception as e:

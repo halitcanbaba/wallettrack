@@ -361,6 +361,16 @@ body {
     color: #ff060a;
 }
 
+.network-btc {
+    background: rgba(247, 147, 26, 0.2);
+    color: #f7931a;
+}
+
+.network-sol {
+    background: rgba(220, 31, 255, 0.2);
+    color: #dc1fff;
+}
+
 .transaction-amount {
     font-family: 'Monaco', 'Menlo', monospace;
     font-size: 12px;

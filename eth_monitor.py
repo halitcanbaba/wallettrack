@@ -168,11 +168,22 @@ class EthereumMonitor:
             updated_token_ids = set()
             
             for token_symbol, balance in balances.items():
-                # Get detailed token info
-                token_info = token_info_map.get(token_symbol, {})
-                contract_address = token_info.get('contract')
-                token_name = token_info.get('name', token_symbol)
-                decimals = token_info.get('decimals', 18)
+                # Special handling for native ETH token
+                if token_symbol == 'ETH':
+                    token_info = {
+                        'contract': None,
+                        'name': 'Ethereum',
+                        'decimals': 18
+                    }
+                    contract_address = None
+                    token_name = 'Ethereum'
+                    decimals = 18
+                else:
+                    # Get detailed token info for ERC-20 tokens
+                    token_info = token_info_map.get(token_symbol, {})
+                    contract_address = token_info.get('contract')
+                    token_name = token_info.get('name', token_symbol)
+                    decimals = token_info.get('decimals', 18)
                 
                 # Find or create token
                 token = await self._find_or_create_token(

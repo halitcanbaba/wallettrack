@@ -441,7 +441,7 @@ class WalletTracker {
                     ${balance ? `<button class="action-btn btn-hide" onclick="hideToken(${balance.wallet_id || wallet.id}, ${balance.token_id})" title="Hide Token">
                         <i class="fas fa-eye-slash"></i>
                     </button>` : ''}
-                    <button class="action-btn btn-delete" onclick="deleteWallet('${wallet.address}')" title="Delete">
+                    <button class="action-btn btn-delete" onclick="deleteWallet(${wallet.id})" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -919,14 +919,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function addWallet() {
     const address = document.getElementById('walletAddress').value.trim();
-    const network = document.getElementById('walletNetwork').value;
+    const blockchainId = parseInt(document.getElementById('walletNetwork').value);
     
     if (!address) {
-        alert('Please enter a wallet address');
+        alert('Lütfen bir wallet adresi girin');
         return;
     }
     
-    const blockchainId = network === 'ethereum' ? 1 : 2; // Assuming 1=ETH, 2=TRON
+    if (!blockchainId) {
+        alert('Lütfen bir network seçin');
+        return;
+    }
     
     try {
         const response = await fetch('/api/wallets', {
@@ -943,6 +946,7 @@ async function addWallet() {
         
         if (response.ok) {
             document.getElementById('walletAddress').value = '';
+            document.getElementById('walletNetwork').value = '';
             toggleAddWalletForm();
             
             if (window.walletTracker) {
@@ -950,21 +954,42 @@ async function addWallet() {
             }
         } else {
             const error = await response.json();
-            alert('Error adding wallet: ' + error.detail);
+            alert('Wallet eklenirken hata oluştu: ' + error.detail);
         }
     } catch (error) {
         console.error('Error adding wallet:', error);
-        alert('Error adding wallet');
+        alert('Wallet eklenirken hata oluştu');
     }
 }
 
-async function deleteWallet(address) {
-    if (!confirm('Are you sure you want to delete this wallet?')) {
+async function deleteWallet(walletId) {
+    if (!confirm('Bu wallet\'ı silmek istediğinizden emin misiniz?')) {
         return;
     }
     
-    // Implementation would need wallet ID lookup
-    console.log('Delete wallet:', address);
+    try {
+        const response = await fetch(`/api/wallets/${walletId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            // Refresh the wallet display
+            if (window.walletTracker) {
+                await window.walletTracker.loadWallets();
+                window.walletTracker.showTransactionNotification('Wallet başarıyla silindi');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Error deleting wallet:', error);
+            alert('Wallet silinirken hata oluştu: ' + error.detail);
+        }
+    } catch (error) {
+        console.error('Error deleting wallet:', error);
+        alert('Wallet silinirken hata oluştu');
+    }
 }
 
 async function refreshWallet(walletId) {
@@ -1015,4 +1040,44 @@ async function refreshWallet(walletId) {
 function toggleAddWalletForm() {
     const form = document.getElementById('addWalletForm');
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+// Load available blockchains from API
+async function loadBlockchains() {
+    try {
+        const response = await fetch('/api/blockchains');
+        if (response.ok) {
+            const blockchains = await response.json();
+            const select = document.getElementById('walletNetwork');
+            
+            // Clear existing options
+            select.innerHTML = '';
+            
+            // Add placeholder
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select a network...';
+            placeholder.disabled = true;
+            placeholder.selected = true;
+            select.appendChild(placeholder);
+            
+            // Add blockchain options
+            blockchains.forEach(blockchain => {
+                const option = document.createElement('option');
+                option.value = blockchain.id;
+                option.textContent = `${blockchain.display_name} (${blockchain.native_symbol})`;
+                select.appendChild(option);
+            });
+            
+            console.log(`Loaded ${blockchains.length} blockchains:`, blockchains.map(b => b.name).join(', '));
+        } else {
+            console.error('Failed to load blockchains');
+            const select = document.getElementById('walletNetwork');
+            select.innerHTML = '<option value="">Error loading networks</option>';
+        }
+    } catch (error) {
+        console.error('Error loading blockchains:', error);
+        const select = document.getElementById('walletNetwork');
+        select.innerHTML = '<option value="">Error loading networks</option>';
+    }
 }

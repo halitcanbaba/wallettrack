@@ -379,8 +379,12 @@ class EthereumService:
                         tokens_found[contract_address]['interactions'] = count
             
             # Convert to list and prioritize by interaction count
-            discovered_tokens = list(tokens_found.values())
+            # Filter out tokens with very low interaction (likely scam/spam)
+            MIN_INTERACTIONS = 4  # Require at least 4 transactions
+            discovered_tokens = [token for token in tokens_found.values() if token.get('interactions', 0) >= MIN_INTERACTIONS]
             discovered_tokens.sort(key=lambda x: x.get('interactions', 0), reverse=True)
+            
+            logger.info(f"Filtered to {len(discovered_tokens)} tokens with at least {MIN_INTERACTIONS} interactions")
             
             # Add our hardcoded high-value tokens at the beginning, removing them from their original positions if found
             priority_tokens = [
@@ -458,9 +462,15 @@ class EthereumService:
                     continue
                 
                 token_balance = await self.get_token_balance(address, contract_address, decimals)
-                if token_balance > 0:  # Only include tokens with positive balance
+                
+                # Filter out dust amounts (likely scam tokens airdropped)
+                MIN_TOKEN_BALANCE = 0.000001  # Very small amount to filter dust
+                
+                if token_balance > MIN_TOKEN_BALANCE:  # Only include meaningful balances
                     balances[token_symbol] = token_balance
                     tokens_with_balance.append(f"{token_symbol}: {token_balance}")
+                elif token_balance > 0:
+                    logger.debug(f"Filtering out dust balance: {token_symbol} = {token_balance}")
                 
                 # Small delay to avoid rate limiting (reduced for API v2)
                 if self.use_v2_api:
