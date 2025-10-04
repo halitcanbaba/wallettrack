@@ -133,45 +133,133 @@ class BinanceService:
             logger.error(f"💥 Binance ticker error: {str(e)}")
             return None
     
-    async def get_24hr_ticker(self, symbol: str = "USDTTRY") -> Optional[Dict]:
+    async def get_all_symbols(self) -> Optional[List[Dict]]:
         """
-        Get 24hr ticker statistics
+        Get all trading symbols from Binance
+        
+        Returns:
+            List of symbol information or None if error
+        """
+        try:
+            session = await self.get_session()
+            
+            url = f"{self.base_url}/api/v3/exchangeInfo"
+            
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    symbols = data.get("symbols", [])
+                    logger.info(f"📋 Binance: {len(symbols)} symbols loaded")
+                    return symbols
+                else:
+                    logger.error(f"❌ Binance exchangeInfo API error: {response.status}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"💥 Binance exchangeInfo error: {str(e)}")
+            return None
+    
+    async def get_24h_ticker(self, symbol: Optional[str] = None) -> Optional[Dict]:
+        """
+        Get 24h ticker data
         
         Args:
-            symbol: Trading pair symbol (default: USDTTRY)
+            symbol: Optional symbol filter, if None returns all symbols
             
         Returns:
-            24hr ticker data or None if error
+            Dict or List of ticker data
         """
         try:
             session = await self.get_session()
             
             url = f"{self.base_url}/api/v3/ticker/24hr"
-            params = {"symbol": symbol.upper()}
+            params = {}
+            if symbol:
+                params["symbol"] = symbol.upper()
             
             async with session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
-                    
-                    ticker = {
-                        "symbol": data["symbol"],
-                        "price": float(data["lastPrice"]),
-                        "change": float(data["priceChange"]),
-                        "changePercent": float(data["priceChangePercent"]),
-                        "high": float(data["highPrice"]),
-                        "low": float(data["lowPrice"]),
-                        "volume": float(data["volume"]),
-                        "quoteVolume": float(data["quoteVolume"])
-                    }
-                    
-                    logger.info(f"📈 Binance 24hr ticker for {symbol}: {ticker['price']} ({ticker['changePercent']:+.2f}%)")
-                    return ticker
+                    return data
                 else:
-                    logger.error(f"❌ Binance 24hr ticker API error: {response.status}")
+                    logger.error(f"❌ Binance 24h ticker API error: {response.status}")
                     return None
                     
         except Exception as e:
-            logger.error(f"💥 Binance 24hr ticker error: {str(e)}")
+            logger.error(f"💥 Binance 24h ticker error: {str(e)}")
+            return None
+    
+    async def get_all_coins_info(self) -> Optional[List[Dict]]:
+        """
+        Get all coins information (requires API key for withdrawal info)
+        This is a public approximation using available data
+        
+        Returns:
+            List of coin information or None if error
+        """
+        try:
+            # Since withdrawal fees require authentication, we return exchange info instead
+            symbols = await self.get_all_symbols()
+            if not symbols:
+                return None
+            
+            # Extract unique coins
+            coins = {}
+            for symbol_info in symbols:
+                base = symbol_info.get('baseAsset')
+                if base and base not in coins:
+                    coins[base] = {
+                        'coin': base,
+                        'name': base,
+                        'networkList': []
+                    }
+            
+            return list(coins.values())
+                    
+        except Exception as e:
+            logger.error(f"💥 Binance coins info error: {str(e)}")
+            return None
+    
+    async def get_klines(self, symbol: str, interval: str = "1m", limit: int = 100, start_time: int = None, end_time: int = None) -> Optional[List[List]]:
+        """
+        Get kline/candlestick data
+        
+        Args:
+            symbol: Trading pair symbol (e.g., USDTTRY)
+            interval: Kline interval (1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M)
+            limit: Number of klines to return (default: 100, max: 1000)
+            start_time: Start time in milliseconds (optional)
+            end_time: End time in milliseconds (optional)
+        
+        Returns:
+            List of klines or None if error
+            Each kline is: [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBase, takerBuyQuote, ignore]
+        """
+        try:
+            session = await self.get_session()
+            
+            url = f"{self.base_url}/api/v3/klines"
+            params = {
+                "symbol": symbol.upper(),
+                "interval": interval,
+                "limit": limit
+            }
+            
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                else:
+                    logger.error(f"❌ Binance klines API error: {response.status}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"💥 Binance klines error: {str(e)}")
             return None
 
 # Create global instance

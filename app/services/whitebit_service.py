@@ -165,15 +165,20 @@ class WhiteBitService:
                     if symbol in data:
                         ticker_data = data[symbol]
                         
+                        # WhiteBit v4 API response format:
+                        # {base_id, quote_id, last_price, quote_volume, base_volume, isFrozen, change}
+                        last_price = float(ticker_data.get("last_price", 0))
+                        
                         ticker = {
                             "symbol": symbol,
-                            "price": float(ticker_data["last"]),
+                            "price": last_price,
+                            "lastPrice": last_price,
                             "change": float(ticker_data.get("change", "0")),
-                            "changePercent": float(ticker_data.get("change", "0")),  # WhiteBit change is in percentage
-                            "high": float(ticker_data.get("high", ticker_data["last"])),
-                            "low": float(ticker_data.get("low", ticker_data["last"])),
-                            "volume": float(ticker_data.get("volume", "0")),
-                            "quoteVolume": float(ticker_data.get("deal", "0"))
+                            "changePercent": float(ticker_data.get("change", "0")),  # WhiteBit change is already in percentage
+                            "high": last_price,  # WhiteBit doesn't provide high/low
+                            "low": last_price,
+                            "volume": float(ticker_data.get("base_volume", "0")),
+                            "quoteVolume": float(ticker_data.get("quote_volume", "0"))
                         }
                         
                         logger.info(f"📈 WhiteBit 24hr ticker for {symbol}: {ticker['price']} ({ticker['changePercent']:+.2f}%)")
@@ -187,6 +192,99 @@ class WhiteBitService:
                     
         except Exception as e:
             logger.error(f"💥 WhiteBit 24hr ticker error: {str(e)}")
+            return None
+    
+    async def get_markets(self) -> Optional[Dict]:
+        """
+        Get all markets from WhiteBit
+        
+        Returns:
+            Dict of market information or None if error
+        """
+        try:
+            session = await self.get_session()
+            
+            # WhiteBit markets endpoint
+            url = f"{self.base_url}/api/v4/public/markets"
+            
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"📋 WhiteBit: {len(data)} markets loaded")
+                    return data
+                else:
+                    logger.error(f"❌ WhiteBit markets API error: {response.status}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"💥 WhiteBit markets error: {str(e)}")
+            return None
+    
+    async def get_klines(self, symbol: str, interval: str = "1m", limit: int = 1440) -> Optional[List[List]]:
+        """
+        Get kline/candlestick data from WhiteBit
+        
+        Args:
+            symbol: Trading pair symbol (e.g., USDT_TRY)
+            interval: Time interval (1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 1w)
+            limit: Number of klines to return (max 1440)
+            
+        Returns:
+            List of klines or None if error
+            Each kline: [timestamp, open, high, low, close, volume]
+        """
+        try:
+            session = await self.get_session()
+            
+            # WhiteBit interval mapping - they might use different format
+            # Try converting: 1m -> 1, 5m -> 5, 1h -> 60, 1d -> 1440
+            interval_to_minutes = {
+                "1m": "1", "3m": "3", "5m": "5", "15m": "15", "30m": "30",
+                "1h": "60", "2h": "120", "4h": "240", "6h": "360", "8h": "480", "12h": "720",
+                "1d": "1440", "1w": "10080"
+            }
+            whitebit_interval = interval_to_minutes.get(interval, "1")
+            
+            # WhiteBit klines endpoint - v1 API
+            url = f"{self.base_url}/api/v1/public/kline"
+            params = {
+                "market": symbol,
+                "interval": whitebit_interval,
+                "limit": min(limit, 1440)  # WhiteBit max is 1440
+            }
+            
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    # WhiteBit returns: [[timestamp, open, close, high, low, volume, deal]]
+                    if isinstance(data, list) and len(data) > 0:
+                        # Convert to standard format: [timestamp, open, high, low, close, volume]
+                        formatted_klines = []
+                        for k in data:
+                            formatted_klines.append([
+                                int(k[0]) * 1000,  # Convert to milliseconds
+                                float(k[1]),  # open
+                                float(k[3]),  # high
+                                float(k[4]),  # low
+                                float(k[2]),  # close
+                                float(k[5])   # volume
+                            ])
+                        logger.info(f"📊 WhiteBit: Fetched {len(formatted_klines)} klines for {symbol}")
+                        return formatted_klines
+                    else:
+                        logger.warning(f"⚠️ WhiteBit klines empty response for {symbol}")
+                        return None
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ WhiteBit klines HTTP error: {response.status} - {error_text}")
+                    return None
+                    
+        except asyncio.TimeoutError:
+            logger.error("⏰ WhiteBit klines API timeout")
+            return None
+        except Exception as e:
+            logger.error(f"💥 WhiteBit klines error: {str(e)}")
             return None
 
 # Create global instance

@@ -5,6 +5,7 @@ Handles orderbook and market data from OKX Exchange
 
 import httpx
 import logging
+import asyncio
 from typing import Dict, List, Optional, Any
 from app.core.config import OKX_BASE_URL, OKX_COMMISSION_BPS, KDV_RATE
 
@@ -143,9 +144,9 @@ class OKXService:
                     return {
                         "symbol": symbol,
                         "price": float(ticker_data.get("last", 0)),
-                        "volume": float(ticker_data.get("vol24h", 0)),
-                        "change": float(ticker_data.get("chg", 0)),
-                        "change_percent": float(ticker_data.get("chgUtc", 0)),
+                        "vol24h": float(ticker_data.get("vol24h", 0)),
+                        "volCcy24h": float(ticker_data.get("volCcy24h", 0)),
+                        "last": float(ticker_data.get("last", 0)),
                         "high": float(ticker_data.get("high24h", 0)),
                         "low": float(ticker_data.get("low24h", 0)),
                         "exchange": "okx"
@@ -156,6 +157,127 @@ class OKXService:
                     
         except Exception as e:
             logger.error(f"❌ OKX ticker error: {str(e)}")
+            return None
+    
+    async def get_all_instruments(self, inst_type: str = "SPOT") -> Optional[List[Dict]]:
+        """
+        Get all trading instruments from OKX
+        
+        Args:
+            inst_type: Instrument type (SPOT, FUTURES, SWAP, OPTION)
+            
+        Returns:
+            List of instrument information or None if error
+        """
+        try:
+            url = f"{self.api_url}/public/instruments"
+            params = {"instType": inst_type}
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                if data.get("code") == "0" and data.get("data"):
+                    logger.info(f"📋 OKX: {len(data['data'])} instruments loaded")
+                    return data["data"]
+                else:
+                    logger.warning(f"⚠️ OKX instruments API error: {data.get('msg', 'Unknown error')}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ OKX instruments error: {str(e)}")
+            return None
+    
+    async def get_candles(self, symbol: str, bar: str = "1m", limit: int = 100, after: str = None) -> Optional[List[List]]:
+        """
+        Get candlestick/kline data
+        
+        Args:
+            symbol: Trading pair (e.g., USDT-TRY)
+            bar: Bar size (1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W, 1M)
+            limit: Number of candles (max 100)
+            after: Pagination - timestamp to get candles after this time (in milliseconds)
+            
+        Returns:
+            List of candles or None if error
+            Each candle: [timestamp, open, high, low, close, volume, volCcy, volCcyQuote, confirm]
+        """
+        try:
+            url = f"{self.api_url}/market/candles"
+            params = {
+                "instId": symbol.upper(),
+                "bar": bar,
+                "limit": str(min(limit, 100))  # OKX max is 100
+            }
+            
+            if after:
+                params["after"] = str(after)
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                if data.get("code") == "0" and data.get("data"):
+                    return data["data"]
+                else:
+                    logger.warning(f"⚠️ OKX candles API error: {data.get('msg', 'Unknown error')}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ OKX candles error: {str(e)}")
+            return None
+    
+    async def get_candles_paginated(self, symbol: str, bar: str = "1m", total_limit: int = 1000) -> Optional[List[List]]:
+        """
+        Get candlestick/kline data with pagination to fetch more than 100 candles
+        
+        Args:
+            symbol: Trading pair (e.g., USDT-TRY)
+            bar: Bar size (1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W, 1M)
+            total_limit: Total number of candles to fetch (will make multiple requests)
+            
+        Returns:
+            List of all candles or None if error
+        """
+        try:
+            all_candles = []
+            after = None
+            remaining = total_limit
+            
+            while remaining > 0:
+                # Fetch batch (max 100 per request)
+                batch_size = min(remaining, 100)
+                candles = await self.get_candles(symbol, bar, batch_size, after)
+                
+                if not candles or len(candles) == 0:
+                    break
+                
+                all_candles.extend(candles)
+                remaining -= len(candles)
+                
+                # If we got less than requested, no more data available
+                if len(candles) < batch_size:
+                    break
+                
+                # Use the oldest timestamp for next pagination
+                # OKX returns newest first, so the last item is the oldest
+                after = candles[-1][0]  # timestamp is first element
+                
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(0.1)
+            
+            # OKX returns newest first, reverse to get chronological order
+            all_candles.reverse()
+            
+            logger.info(f"📊 OKX: Fetched {len(all_candles)} candles for {symbol}")
+            return all_candles if all_candles else None
+                    
+        except Exception as e:
+            logger.error(f"❌ OKX paginated candles error: {str(e)}")
             return None
 
 # Global service instance

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exchange Analytics - WalletTrack Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <style>
+        .sub-nav {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-bottom: 2px solid rgba(102, 126, 234, 0.2);
+            padding: 0;
+            margin: 0;
+            display: flex;
+            gap: 0;
+        }
+        .sub-nav-btn {
+            flex: 1;
+            padding: 16px 24px;
+            border: none;
+            background: transparent;
+            color: #4a5568;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .sub-nav-btn:hover {
+            background: rgba(102, 126, 234, 0.05);
+            color: #667eea;
+        }
+        .sub-nav-btn.active {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        .exchange-tables {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .exchange-table-card {
+            background: #1a202c;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .exchange-table-card h3 {
+            margin: 0 0 15px 0;
+            color: #e2e8f0;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .exchange-table-card .table {
+            background: #2d3748;
+        }
+        .exchange-table-card .table thead {
+            background: #4a5568;
+        }
+        .exchange-table-card .table thead th {
+            color: #e2e8f0;
+            border-bottom: 1px solid #4a5568;
+        }
+        .exchange-table-card .table tbody td {
+            color: #cbd5e0;
+            border-bottom: 1px solid #4a5568;
+        }
+        .exchange-table-card .table tbody tr:hover {
+            background: #374151;
+        }
+        #comparisonTableSection .table {
+            background: #1a202c;
+        }
+        #comparisonTableSection .table thead {
+            background: #2d3748;
+        }
+        #comparisonTableSection .table thead th {
+            color: #e2e8f0;
+        }
+        #comparisonTableSection .table tbody td {
+            color: #cbd5e0;
+            border-bottom: 1px solid #4a5568;
+        }
+        #comparisonTableSection .table tbody tr:hover {
+            background: #374151;
+        }
+        .exchange-badge {
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .exchange-badge.binance { background: #f0b90b; color: #000; }
+        .exchange-badge.okx { background: #3b82f6; color: #fff; }
+        .exchange-badge.cointr { background: #10b981; color: #fff; }
+        .exchange-badge.whitebit { background: #8b5cf6; color: #fff; }
+        
+        /* Dark theme for all tables */
+        #symbols-section .table-container .table,
+        #fees-section .table-container .table {
+            background: #1a202c;
+        }
+        #symbols-section .table thead,
+        #fees-section .table thead {
+            background: #2d3748;
+        }
+        #symbols-section .table thead th,
+        #fees-section .table thead th {
+            color: #e2e8f0;
+        }
+        #symbols-section .table tbody td,
+        #fees-section .table tbody td {
+            color: #cbd5e0;
+            border-bottom: 1px solid #4a5568;
+        }
+        #symbols-section .table tbody tr:hover,
+        #fees-section .table tbody tr:hover {
+            background: #374151;
+        }
+
+        /* Date Picker Styling - Match with dropdown */
+        input[type="date"] {
+            position: relative;
+            padding-right: 35px;
+            background: #2d3748;
+            color: #b2b5ba !important;
+            cursor: pointer;
+            font-size: 14px;
+            border: 1px solid #4a5568;
+        }
+        
+        input[type="date"]:hover {
+            border-color: #667eea;
+        }
+        
+        input[type="date"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.6;
+            filter: invert(0.7);
+            position: absolute;
+            right: 8px;
+            width: 18px;
+            height: 18px;
+        }
+        
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 0.9;
+        }
+        
+        input[type="date"]::-webkit-datetime-edit {
+            color: #b2b5ba;
+        }
+        
+        input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+            color: #b2b5ba;
+        }
+        
+        input[type="date"]::-webkit-datetime-edit-text {
+            color: #718096;
+            padding: 0 2px;
+        }
+        
+        input[type="date"]::-webkit-datetime-edit-month-field,
+        input[type="date"]::-webkit-datetime-edit-day-field,
+        input[type="date"]::-webkit-datetime-edit-year-field {
+            color: #b2b5ba;
+            font-weight: 500;
+        }
+        
+        input[type="date"]::-webkit-datetime-edit-month-field:focus,
+        input[type="date"]::-webkit-datetime-edit-day-field:focus,
+        input[type="date"]::-webkit-datetime-edit-year-field:focus {
+            background: rgba(102, 126, 234, 0.2);
+            color: #e2e8f0;
+        }
+
+        /* Content Section Display Toggle */
+        .content-section {
+            display: none;
+        }
+        
+        .content-section.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">WALLETTRACK PRO - ANALYTICS</div>
+            <div class="header-actions">
+                <button class="add-wallet-btn" onclick="window.location.href='/'">
+                    <i class="fas fa-arrow-left"></i> BACK TO DASHBOARD
+                </button>
+            </div>
+        </header>
+
+        <!-- Sub Navigation -->
+        <nav class="sub-nav">
+            <button class="sub-nav-btn active" data-section="volume">
+                <i class="fas fa-chart-bar"></i> Volume Analysis
+            </button>
+            <button class="sub-nav-btn" data-section="prices">
+                <i class="fas fa-dollar-sign"></i> Price Comparison
+            </button>
+            <button class="sub-nav-btn" data-section="symbols">
+                <i class="fas fa-list"></i> Symbol Export
+            </button>
+            <button class="sub-nav-btn" data-section="fees">
+                <i class="fas fa-money-bill-wave"></i> Withdrawal Fees
+            </button>
+        </nav>
+
+        <!-- Volume Analysis Section -->
+        <section id="volume-section" class="section content-section active">
+            <!-- Product Comparison Section (Moved to Top) -->
+            <div class="section-header" style="margin-top: 20px;">
+                <div class="controls-panel" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px; max-width: 300px;">
+                        <input type="text" id="volumeSymbolInput" class="form-input" placeholder="e.g., BTCTRY, ETHTRY, USDTTRY" value="USDTTRY" style="color: #2d3748;">
+                    </div>
+                    <div>
+                        <button id="compareProductBtn" class="btn btn-primary" style="margin: 0;">
+                            <i class="fas fa-chart-line"></i> COMPARE
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-section" id="comparisonChartSection" style="display: none; height: 500px; max-height: 500px; position: relative; margin-bottom: 30px;">
+                <div style="height: 450px; position: relative;">
+                    <canvas id="volumeChart"></canvas>
+                </div>
+            </div>
+
+            <div class="table-container" id="comparisonTableSection" style="display: none; margin-bottom: 40px;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Exchange</th>
+                            <th>Symbol</th>
+                            <th>Base Volume</th>
+                            <th>Quote Vol (TRY)</th>
+                            <th>USDT Volume</th>
+                            <th>Last Price</th>
+                            <th>Change %</th>
+                            <th>Trades</th>
+                        </tr>
+                    </thead>
+                    <tbody id="volumeTableBody">
+                        <tr>
+                            <td colspan="8" class="loading-row">Enter product symbol and click COMPARE</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Top 5 Products Section -->
+            <div class="section-header">
+                <h2 class="section-title">Volume Analysis - Top 5 Products by Exchange</h2>
+                <div class="controls-panel" style="margin-top: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="min-width: 180px;">
+                        <select id="quoteAssetSelect" class="form-input" style="color: #b2b5ba;">
+                            <option value="TRY" selected>TRY (Turkish Lira)</option>
+                            <option value="USDT">USDT (Tether)</option>
+                            <option value="BTC">BTC (Bitcoin)</option>
+                            <option value="ETH">ETH (Ethereum)</option>
+                        </select>
+                    </div>
+                    <div style="min-width: 160px;">
+                        <input type="date" id="volumeDatePicker" class="form-input">
+                    </div>
+                    <div>
+                        <button id="refreshVolumesBtn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> REFRESH
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top 5 Products by Exchange -->
+            <div id="exchangeTablesContainer" class="exchange-tables">
+                <div class="exchange-table-card">
+                    <h3><span class="exchange-badge binance">Binance</span> Top 5</h3>
+                    <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                        Loading data...
+                    </div>
+                </div>
+                <div class="exchange-table-card">
+                    <h3><span class="exchange-badge okx">OKX</span> Top 5</h3>
+                    <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                        Loading data...
+                    </div>
+                </div>
+                <div class="exchange-table-card">
+                    <h3><span class="exchange-badge cointr">Cointr</span> Top 5</h3>
+                    <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                        Loading data...
+                    </div>
+                </div>
+                <div class="exchange-table-card">
+                    <h3><span class="exchange-badge whitebit">WhiteBit</span> Top 5</h3>
+                    <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                        Loading data...
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Price Comparison Section -->
+        <section id="prices-section" class="section content-section">
+            <div class="section-header" style="margin-bottom: 20px;">
+                <div class="controls-panel" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px; max-width: 300px;">
+                        <input type="text" id="priceSymbolInput" class="form-input" placeholder="e.g., BTCTRY, ETHTRY, USDTTRY" value="USDTTRY" style="color: #b2b5ba;">
+                    </div>
+                    <div style="min-width: 160px;">
+                        <select id="priceRangeSelect" class="form-input" style="color: #b2b5ba;">
+                            <option value="today">Today</option>
+                            <option value="10" selected>Last 10 Days</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="custom">Custom Date</option>
+                        </select>
+                    </div>
+                    <div id="customDateContainer" style="min-width: 180px; display: none;">
+                        <input type="date" id="customDateInput" class="form-input" style="color: #b2b5ba;">
+                    </div>
+                    <div>
+                        <button id="comparePricesBtn" class="btn btn-primary" style="margin: 0;">
+                            <i class="fas fa-chart-area"></i> COMPARE
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-section" id="priceChartSection" style="display: none; position: relative; margin-bottom: 30px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">Ask Price Comparison Across Exchanges</h3>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="resetZoomBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; display: none;">
+                            <i class="fas fa-expand"></i> Reset Zoom
+                        </button>
+                        <span style="color: #a0aec0; font-size: 12px; padding: 6px 12px; background: rgba(102, 126, 234, 0.1); border-radius: 6px;">
+                            <i class="fas fa-info-circle"></i> Scroll to zoom • Drag to pan
+                        </span>
+                    </div>
+                </div>
+                <div style="height: 500px; position: relative;">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="table-container" id="priceTableSection" style="display: none;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Exchange</th>
+                            <th>Current Ask Price</th>
+                            <th>24h High</th>
+                            <th>24h Low</th>
+                            <th>24h Change %</th>
+                            <th>Last Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody id="priceTableBody">
+                        <tr>
+                            <td colspan="6" class="loading-row">Enter pair and click COMPARE</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Symbols Export Section -->
+        <section id="symbols-section" class="section content-section">
+            <div class="section-header">
+                <h2 class="section-title">Symbol Export</h2>
+                <div class="section-meta">Export trading symbols from exchanges</div>
+            </div>
+            <div class="controls-panel">
+                <div class="form-group">
+                    <label class="form-label">Exchange</label>
+                    <select id="symbolExchangeSelect" class="form-select">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Filter by Quote</label>
+                    <input type="text" id="symbolFilterInput" class="form-input" placeholder="e.g., USDT">
+                </div>
+                <button id="loadSymbolsBtn" class="btn btn-primary">
+                    <i class="fas fa-download"></i> LOAD SYMBOLS
+                </button>
+                <button id="exportSymbolsBtn" class="btn btn-success">
+                    <i class="fas fa-file-code"></i> EXPORT JSON
+                </button>
+                <button id="exportSymbolsCsvBtn" class="btn btn-success">
+                    <i class="fas fa-file-csv"></i> EXPORT CSV
+                </button>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">📋</div>
+                    <div class="metric-content">
+                        <div class="metric-label">Total Symbols</div>
+                        <div class="metric-value" id="totalSymbols">-</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-content">
+                        <div class="metric-label">Active</div>
+                        <div class="metric-value" id="activeSymbols">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Base Asset</th>
+                            <th>Quote Asset</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="symbolsTableBody">
+                        <tr>
+                            <td colspan="4" class="loading-row">Select exchange and click LOAD SYMBOLS</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Withdrawal Fees Section -->
+        <section id="fees-section" class="section content-section">
+            <div class="section-header">
+                <h2 class="section-title">Withdrawal Fees</h2>
+                <div class="section-meta">Export withdrawal fee information</div>
+            </div>
+            <div class="controls-panel">
+                <div class="form-group">
+                    <label class="form-label">Exchange</label>
+                    <select id="feeExchangeSelect" class="form-select">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Search Asset</label>
+                    <input type="text" id="feeFilterInput" class="form-input" placeholder="e.g., BTC">
+                </div>
+                <button id="loadFeesBtn" class="btn btn-primary">
+                    <i class="fas fa-download"></i> LOAD FEES
+                </button>
+                <button id="exportFeesBtn" class="btn btn-success">
+                    <i class="fas fa-file-code"></i> EXPORT JSON
+                </button>
+                <button id="exportFeesCsvBtn" class="btn btn-success">
+                    <i class="fas fa-file-csv"></i> EXPORT CSV
+                </button>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">💎</div>
+                    <div class="metric-content">
+                        <div class="metric-label">Total Assets</div>
+                        <div class="metric-value" id="totalAssets">-</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">🌐</div>
+                    <div class="metric-content">
+                        <div class="metric-label">Total Networks</div>
+                        <div class="metric-value" id="totalNetworks">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Network</th>
+                            <th>Withdrawal Fee</th>
+                            <th>Min Amount</th>
+                            <th>Max Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feesTableBody">
+                        <tr>
+                            <td colspan="5" class="loading-row">Select exchange and click LOAD FEES</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/analytics.js"></script>
+</body>
+</html>
