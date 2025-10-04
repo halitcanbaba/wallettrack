@@ -28,10 +28,10 @@ MIN_CHANGE_AMOUNT = 0.001  # Minimum change amount to record
 DUST_FILTER_THRESHOLD = 0.000001  # Filter out dust transactions
 
 # Exchange Configuration
-BINANCE_COMMISSION_BPS = float(os.getenv("BINANCE_COMMISSION_BPS", "10"))  # 10 bps = 0.1%
-COINTR_COMMISSION_BPS = float(os.getenv("COINTR_COMMISSION_BPS", "15"))    # 15 bps = 0.15%
+BINANCE_COMMISSION_BPS = float(os.getenv("BINANCE_COMMISSION_BPS", "5"))  # 10 bps = 0.1%
+COINTR_COMMISSION_BPS = float(os.getenv("COINTR_COMMISSION_BPS", "3"))     # 3 bps = 0.03%
 WHITEBIT_COMMISSION_BPS = float(os.getenv("WHITEBIT_COMMISSION_BPS", "10")) # 10 bps = 0.1%
-OKX_COMMISSION_BPS = float(os.getenv("OKX_COMMISSION_BPS", "8.5"))         # 8.5 bps = 0.085%
+OKX_COMMISSION_BPS = float(os.getenv("OKX_COMMISSION_BPS", "5"))         # 8.5 bps = 0.085%
 KDV_RATE = float(os.getenv("KDV_RATE", "0.20"))                         # 20% KDV
 
 # Binance API Configuration
