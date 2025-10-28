@@ -129,16 +129,15 @@
         }
         
         .orderbook-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
             margin-top: 24px;
         }
         
-        .orderbook-side {
+        .exchange-orderbook {
             background: var(--bg-tertiary);
             border-radius: 12px;
             padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
         }
         
         .orderbook-title {
@@ -147,27 +146,36 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            justify-content: center;
+            color: var(--text-primary);
         }
         
-        .asks-title { color: var(--error-color); }
-        .bids-title { color: var(--success-color); }
-        
-        .orderbook-table {
+        .exchange-orderbook-table {
             width: 100%;
             border-collapse: collapse;
         }
         
-        .orderbook-table th {
+        .exchange-orderbook-table th {
             background: var(--bg-primary);
             padding: 12px 8px;
             text-align: right;
             font-weight: 600;
             font-size: 12px;
             color: var(--text-secondary);
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 2px solid var(--border-color);
         }
         
-        .orderbook-table td {
+        .exchange-orderbook-table th:first-child,
+        .exchange-orderbook-table td:first-child {
+            text-align: left;
+        }
+        
+        .exchange-orderbook-table th:last-child,
+        .exchange-orderbook-table td:last-child {
+            text-align: center;
+        }
+        
+        .exchange-orderbook-table td {
             padding: 8px;
             text-align: right;
             font-family: 'Courier New', monospace;
@@ -175,8 +183,39 @@
             border-bottom: 1px solid var(--border-color);
         }
         
-        .asks-row td { color: var(--error-color); }
-        .bids-row td { color: var(--success-color); }
+        .asks-row {
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+        .asks-row td {
+            color: var(--error-color);
+        }
+        
+        .bids-row {
+            background: rgba(34, 197, 94, 0.1);
+        }
+        
+        .bids-row td {
+            color: var(--success-color);
+        }
+        
+        .side-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .side-ask {
+            background: var(--error-color);
+            color: white;
+        }
+        
+        .side-bid {
+            background: var(--success-color);
+            color: white;
+        }
         
         .placeholder {
             text-align: center;
@@ -203,8 +242,14 @@
                 gap: 12px;
             }
             
-            .orderbook-container {
-                grid-template-columns: 1fr;
+            .exchange-orderbook {
+                padding: 16px;
+            }
+            
+            .exchange-orderbook-table th,
+            .exchange-orderbook-table td {
+                padding: 6px 4px;
+                font-size: 12px;
             }
         }
     </style>
@@ -290,43 +335,23 @@
                     </h2>
                     
                     <div class="orderbook-container">
-                        <div class="orderbook-side">
-                            <h3 class="orderbook-title asks-title">
-                                <i class="fas fa-arrow-up"></i>
-                                Asks (Sell Orders)
+                        <div class="exchange-orderbook">
+                            <h3 class="orderbook-title">
+                                <i class="fas fa-chart-line"></i>
+                                <span id="result-title">Synthetic Orderbook</span>
                             </h3>
                             <div class="table-container">
-                                <table class="orderbook-table">
+                                <table class="exchange-orderbook-table">
                                     <thead>
                                         <tr>
                                             <th>Price</th>
                                             <th>Amount</th>
                                             <th>Total</th>
+                                            <th>Side</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="asks-table">
-                                        <!-- Asks will be populated here -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <div class="orderbook-side">
-                            <h3 class="orderbook-title bids-title">
-                                <i class="fas fa-arrow-down"></i>
-                                Bids (Buy Orders)
-                            </h3>
-                            <div class="table-container">
-                                <table class="orderbook-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Price</th>
-                                            <th>Amount</th>
-                                            <th>Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="bids-table">
-                                        <!-- Bids will be populated here -->
+                                    <tbody id="orderbook-table">
+                                        <!-- Orderbook will be populated here -->
                                     </tbody>
                                 </table>
                             </div>
