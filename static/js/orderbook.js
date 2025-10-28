@@ -570,7 +570,7 @@ class OrderbookManager {
                     <td>${this.formatAmount(askAmount)}</td>
                     <td title="${commissionTooltip}">${this.formatPrice(commission)}</td>
                     <td title="${kdvTooltip}">${this.formatPrice(kdv)}</td>
-                    <td title="${rawPriceTooltip}">${this.formatPrice(finalRawPrice)}${liquidityWarning}</td>
+                    <td title="${rawPriceTooltip}">${this.formatRawPrice(finalRawPrice)}${liquidityWarning}</td>
                     <td title="${netPriceTooltip}">${this.formatNetPrice(netPrice)}</td>
                 </tr>
             `;
@@ -586,7 +586,7 @@ class OrderbookManager {
         // Special case for USDTTRY
         if (upperSymbol === 'USDTTRY') {
             return {
-                priceDecimals: 3,  // 3 digits for TRY price (updated from 2)
+                priceDecimals: 2,  // 2 digits for TRY price in orderbook table
                 amountDecimals: 2, // 2 digits for USDT amount
                 currency: 'TRY'
             };
@@ -657,6 +657,16 @@ class OrderbookManager {
         const upperSymbol = (this.currentSymbol || 'USDTTRY').toUpperCase();
         if (upperSymbol === 'USDTTRY') {
             return parseFloat(price).toFixed(3);  // 3 digits for net price
+        }
+        // For other symbols, use regular formatting
+        return this.formatPrice(price);
+    }
+
+    formatRawPrice(price) {
+        // Special formatting for raw price in top of book - always use 3 decimals for USDTTRY
+        const upperSymbol = (this.currentSymbol || 'USDTTRY').toUpperCase();
+        if (upperSymbol === 'USDTTRY') {
+            return parseFloat(price).toFixed(3);  // 3 digits for raw price
         }
         // For other symbols, use regular formatting
         return this.formatPrice(price);
