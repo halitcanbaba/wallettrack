@@ -586,7 +586,7 @@ class OrderbookManager {
         // Special case for USDTTRY
         if (upperSymbol === 'USDTTRY') {
             return {
-                priceDecimals: 2,  // 2 digits for TRY price
+                priceDecimals: 3,  // 3 digits for TRY price (updated from 2)
                 amountDecimals: 2, // 2 digits for USDT amount
                 currency: 'TRY'
             };
