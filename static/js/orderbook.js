@@ -571,7 +571,7 @@ class OrderbookManager {
                     <td title="${commissionTooltip}">${this.formatPrice(commission)}</td>
                     <td title="${kdvTooltip}">${this.formatPrice(kdv)}</td>
                     <td title="${rawPriceTooltip}">${this.formatPrice(finalRawPrice)}${liquidityWarning}</td>
-                    <td title="${netPriceTooltip}">${this.formatPrice(netPrice)}</td>
+                    <td title="${netPriceTooltip}">${this.formatNetPrice(netPrice)}</td>
                 </tr>
             `;
         });
@@ -650,6 +650,16 @@ class OrderbookManager {
     formatPrice(price) {
         const formatting = this.getSymbolFormatting(this.currentSymbol || 'USDTTRY');
         return parseFloat(price).toFixed(formatting.priceDecimals);
+    }
+
+    formatNetPrice(price) {
+        // Special formatting for net price - always use 3 decimals for USDTTRY
+        const upperSymbol = (this.currentSymbol || 'USDTTRY').toUpperCase();
+        if (upperSymbol === 'USDTTRY') {
+            return parseFloat(price).toFixed(3);  // 3 digits for net price
+        }
+        // For other symbols, use regular formatting
+        return this.formatPrice(price);
     }
 
     formatTotalPrice(price) {

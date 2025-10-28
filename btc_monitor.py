@@ -147,12 +147,15 @@ class BitcoinMonitor:
                     wallet_token.last_updated = datetime.utcnow()
                     
                     # Record in balance history
+                    change_type = "increase" if btc_balance > old_balance else "decrease"
                     history_entry = BalanceHistory(
                         wallet_id=wallet.id,
                         token_id=btc_token.id,
-                        balance=btc_balance,
+                        balance_before=old_balance,
+                        balance_after=btc_balance,
                         change_amount=btc_balance - old_balance,
-                        change_percent=change_percent * 100,
+                        change_percentage=change_percent * 100,
+                        change_type=change_type,
                         timestamp=datetime.utcnow()
                     )
                     db.add(history_entry)

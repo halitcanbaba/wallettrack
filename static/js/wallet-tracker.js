@@ -6,6 +6,16 @@ class WalletTracker {
         this.transactions = [];
         this.config = this.loadConfig();
         
+        // Binance exchange rates cache
+        this.exchangeRates = new Map();
+        this.ratesCacheExpiry = 0;
+        this.ratesCacheDuration = 5 * 60 * 1000; // 5 minutes
+        
+        // Loading state management
+        this.isLoadingWallets = false;
+    this.postReloadPending = false; // flag to run a reload after current display finishes
+        this.balanceUpdateTimeout = null;
+        
         // Lazy loading properties
         this.displayedTransactions = [];
         this.allTransactions = [];
@@ -72,7 +82,77 @@ class WalletTracker {
         if (tokenSymbol === 'ETH' || tokenSymbol === 'WETH' || tokenSymbol === 'TRX') {
             return 6; // More decimals for main coins
         }
+        if (tokenSymbol === 'BTC') {
+            return 4; // 3 decimals for Bitcoin
+        }
         return 2; // Default for tokens
+    }
+
+    // Get Binance exchange rates
+    async getBinanceRates() {
+        const now = Date.now();
+        
+        // Check cache first
+        if (this.ratesCacheExpiry > now && this.exchangeRates.size > 0) {
+            return this.exchangeRates;
+        }
+        
+        try {
+            const response = await fetch('https://api.binance.com/api/v3/ticker/price');
+            const data = await response.json();
+            
+            // Update cache
+            this.exchangeRates.clear();
+            data.forEach(item => {
+                this.exchangeRates.set(item.symbol, parseFloat(item.price));
+            });
+            this.ratesCacheExpiry = now + this.ratesCacheDuration;
+            
+            console.log('Binance rates updated:', this.exchangeRates.size, 'pairs');
+            return this.exchangeRates;
+        } catch (error) {
+            console.error('Error fetching Binance rates:', error);
+            return this.exchangeRates; // Return cached data if available
+        }
+    }
+
+    // Convert token balance to USDT using Binance rates
+    async convertToUSDT(tokenSymbol, balance) {
+        if (!tokenSymbol || !balance || balance <= 0) {
+            return 0;
+        }
+
+        // USDT is already USDT
+        if (tokenSymbol === 'USDT') {
+            return balance;
+        }
+
+        const rates = await this.getBinanceRates();
+        
+        // Direct USDT pair
+        const directPair = `${tokenSymbol}USDT`;
+        if (rates.has(directPair)) {
+            return balance * rates.get(directPair);
+        }
+        
+        // Try through BTC
+        const btcPair = `${tokenSymbol}BTC`;
+        const btcUsdtPair = 'BTCUSDT';
+        if (rates.has(btcPair) && rates.has(btcUsdtPair)) {
+            const btcAmount = balance * rates.get(btcPair);
+            return btcAmount * rates.get(btcUsdtPair);
+        }
+        
+        // Try through ETH
+        const ethPair = `${tokenSymbol}ETH`;
+        const ethUsdtPair = 'ETHUSDT';
+        if (rates.has(ethPair) && rates.has(ethUsdtPair)) {
+            const ethAmount = balance * rates.get(ethPair);
+            return ethAmount * rates.get(ethUsdtPair);
+        }
+        
+        console.warn(`No USDT conversion rate found for ${tokenSymbol}`);
+        return 0;
     }
 
     async connectWebSocket() {
@@ -152,8 +232,8 @@ class WalletTracker {
                 // Handle TRON specific transaction
                 if (message.data && message.data.transaction) {
                     this.handleNewTransaction(message.data.transaction);
-                    // Also reload wallets to update balance
-                    this.loadWallets();
+                    // Also reload wallets to update balance (debounced)
+                    this.handleBalanceUpdate({ change_type: 'transaction' });
                 }
                 break;
             case 'transaction_notification':
@@ -174,10 +254,18 @@ class WalletTracker {
     handleBalanceUpdate(balanceData) {
         console.log('💰 Processing balance update:', balanceData);
         
-        // Force reload wallets to get fresh data (bypassing cache)
-        this.loadWallets(true);
+        // Clear any pending balance update
+        if (this.balanceUpdateTimeout) {
+            clearTimeout(this.balanceUpdateTimeout);
+        }
+
+        // Debounce balance updates to prevent rapid successive calls
+        this.balanceUpdateTimeout = setTimeout(() => {
+            // Try to enqueue a reload — if a display is in progress we'll mark it and run after
+            this.enqueueWalletsReload(true);
+        }, 500); // 500ms debounce
         
-        // Show a notification
+        // Show a notification immediately (don't debounce notifications)
         if (balanceData.change_type && balanceData.token_symbol) {
             const changeType = balanceData.change_type;
             const amount = Math.abs(balanceData.change_amount || 0);
@@ -186,6 +274,23 @@ class WalletTracker {
             
             let message = `${symbol} balance ${changeType}: ${amount.toFixed(6)} (${percentage.toFixed(2)}%)`;
             this.showBalanceNotification(message, changeType.includes('increase') ? 'success' : 'warning');
+        }
+    }
+
+    enqueueWalletsReload(forceRefresh = false) {
+        // If a display/update is in progress, mark a pending reload so it runs after
+        if (this.isLoadingWallets) {
+            console.log('⏳ Display in progress, scheduling wallets reload after current display finishes');
+            this.postReloadPending = true;
+            this.postReloadForce = forceRefresh;
+            return;
+        }
+
+        // Otherwise, run the reload now
+        try {
+            this.loadWallets(forceRefresh);
+        } catch (err) {
+            console.error('Failed to enqueue wallets reload:', err);
         }
     }
 
@@ -313,6 +418,14 @@ class WalletTracker {
     }
 
     async loadWallets(forceRefresh = false) {
+        // Prevent concurrent wallet loading operations
+        if (this.isLoadingWallets) {
+            console.log('⏸️ Wallet loading already in progress, skipping...');
+            return;
+        }
+        
+        this.isLoadingWallets = true;
+        
         try {
             const url = `/api/wallets?_t=${Date.now()}`;
                 
@@ -327,6 +440,8 @@ class WalletTracker {
             }
         } catch (error) {
             console.error('Failed to load wallets:', error);
+        } finally {
+            this.isLoadingWallets = false;
         }
     }
 
@@ -363,27 +478,79 @@ class WalletTracker {
             return;
         }
         
+        // Prevent concurrent wallet loading/display operations
+        if (this.isLoadingWallets) {
+            console.log('⏸️ displayWallets called while a wallet load is in progress, skipping to avoid duplicate render');
+            return;
+        }
+
+        // Mark loading so other callers (like loadWallets) will wait
+        this.isLoadingWallets = true;
+
+        // Group tokens by symbol across all wallets to avoid duplicates
+        const tokenGroups = new Map();
+        
+        for (const wallet of wallets) {
+            if (wallet.balances && wallet.balances.length > 0) {
+                for (const balance of wallet.balances) {
+                    const key = `${balance.token_symbol}_${wallet.blockchain?.name}`;
+                    
+                    if (tokenGroups.has(key)) {
+                        // Add to existing token group
+                        const existing = tokenGroups.get(key);
+                        existing.balance += balance.balance;
+                        existing.wallets.push({ wallet, balance });
+                    } else {
+                        // Create new token group
+                        tokenGroups.set(key, {
+                            tokenSymbol: balance.token_symbol,
+                            blockchain: wallet.blockchain,
+                            balance: balance.balance,
+                            wallets: [{ wallet, balance }],
+                            token_id: balance.token_id
+                        });
+                    }
+                }
+            } else {
+                // Wallet without balances - show as individual row
+                const key = `${wallet.address}_no_balance`;
+                tokenGroups.set(key, {
+                    wallet: wallet,
+                    balance: null,
+                    wallets: [{ wallet, balance: null }]
+                });
+            }
+        }
+        
         // Store current rows for animation comparison
         const existingRows = isRefresh ? Array.from(tbody.querySelectorAll('tr')) : [];
         
-        tbody.innerHTML = '';
+    tbody.innerHTML = '';
         
-        wallets.forEach(wallet => {
-            if (wallet.balances && wallet.balances.length > 0) {
-                wallet.balances.forEach(balance => {
-                    const row = this.createWalletRow(wallet, balance);
-                    tbody.appendChild(row);
-                    
-                    // Add update animation if this is a refresh
-                    if (isRefresh) {
-                        row.classList.add('balance-row-update');
-                        setTimeout(() => {
-                            row.classList.remove('balance-row-update');
-                        }, 800);
-                    }
-                });
+        // Display grouped tokens
+        for (const [key, tokenGroup] of tokenGroups) {
+            if (tokenGroup.balance !== null) {
+                // Show aggregated token balance
+                const representativeWallet = tokenGroup.wallets[0].wallet;
+                const aggregatedBalance = {
+                    token_symbol: tokenGroup.tokenSymbol,
+                    balance: tokenGroup.balance,
+                    token_id: tokenGroup.token_id
+                };
+                
+                const row = this.createWalletRow(representativeWallet, aggregatedBalance);
+                tbody.appendChild(row);
+                
+                // Add update animation if this is a refresh
+                if (isRefresh) {
+                    row.classList.add('balance-row-update');
+                    setTimeout(() => {
+                        row.classList.remove('balance-row-update');
+                    }, 800);
+                }
             } else {
-                const row = this.createWalletRow(wallet, null);
+                // Show wallet without balances
+                const row = this.createWalletRow(tokenGroup.wallet, null);
                 tbody.appendChild(row);
                 
                 if (isRefresh) {
@@ -393,7 +560,19 @@ class WalletTracker {
                     }, 800);
                 }
             }
-        });
+        }
+
+        // Finished rendering — clear loading flag and run any pending reloads
+        this.isLoadingWallets = false;
+        if (this.postReloadPending) {
+            console.log('🔁 Running pending wallets reload that was queued during display');
+            this.postReloadPending = false;
+            // Respect previously requested force flag if set
+            const f = this.postReloadForce || false;
+            this.postReloadForce = false;
+            // run reload (non-blocking)
+            setTimeout(() => this.loadWallets(f), 50);
+        }
     }
 
     createWalletRow(wallet, balance) {
@@ -404,13 +583,16 @@ class WalletTracker {
         const tokenSymbol = balance ? balance.token_symbol : 'N/A';
         const decimals = this.getTokenDecimals(tokenSymbol);
         const balanceAmount = balance ? this.formatBalance(balance.balance, decimals) : '0.00';
-        const usdValue = balance && balance.usd_value ? `$${this.formatBalance(balance.usd_value, 2)}` : 'N/A';
         
+        // Create unique ID for this row's USDT cell
+        const usdtCellId = `usdt-cell-${wallet.id}-${balance?.token_id || 'no-balance'}`;
+        
+        // Render skeleton row immediately (no await - synchronous rendering)
         row.innerHTML = `
             <td>
                 <div class="token-info">
-                    <div class="wallet-label">${wallet.name || shortAddress}</div>
-                    <div class="address">${shortAddress}</div>
+                    <div class="wallet-label">${tokenSymbol} Balance</div>
+                    <div class="address">${wallet.blockchain?.name || 'Unknown'} Network</div>
                 </div>
             </td>
             <td>
@@ -427,8 +609,10 @@ class WalletTracker {
                     </div>
                 </div>
             </td>
-            <td class="balance-cell">
-                ${usdValue}
+            <td class="balance-cell" id="${usdtCellId}">
+                <span class="usdt-loading">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 10px; opacity: 0.6;"></i> Converting...
+                </span>
             </td>
             <td>
                 <span class="status-badge status-success">Active</span>
@@ -448,7 +632,42 @@ class WalletTracker {
             </td>
         `;
         
+        // Schedule asynchronous USDT conversion after DOM insertion
+        this.scheduleUsdtConversion(usdtCellId, tokenSymbol, balance);
+        
         return row;
+    }
+
+    async scheduleUsdtConversion(cellId, tokenSymbol, balance) {
+        // Run conversion asynchronously after a short delay to allow DOM insertion
+        setTimeout(async () => {
+            const cell = document.getElementById(cellId);
+            if (!cell) {
+                // Cell no longer exists (row was removed/replaced), skip conversion
+                return;
+            }
+            
+            let usdtValue = 'N/A';
+            if (balance && balance.balance > 0) {
+                try {
+                    const usdtAmount = await this.convertToUSDT(tokenSymbol, balance.balance);
+                    usdtValue = usdtAmount > 0 ? `${this.formatBalance(usdtAmount, 2)} USDT` : 'N/A';
+                } catch (error) {
+                    console.error('Error converting to USDT:', error);
+                    usdtValue = 'Error';
+                }
+            }
+            
+            // Update the cell content if it still exists
+            if (cell && cell.id === cellId) {
+                cell.innerHTML = usdtValue;
+                // Add a subtle fade-in animation
+                cell.style.opacity = '0.7';
+                setTimeout(() => {
+                    cell.style.opacity = '1';
+                }, 100);
+            }
+        }, 10); // Small delay to ensure DOM is ready
     }
 
     displayTransactions(transactions, append = false) {
