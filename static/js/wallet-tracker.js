@@ -251,6 +251,122 @@ class WalletTracker {
         }
     }
 
+    updateSingleBalanceInUI(balanceData) {
+        // Quick UI update without full reload for better responsiveness
+        try {
+            console.log('🔄 Attempting to update single balance in UI:', {
+                wallet_id: balanceData.wallet_id,
+                token_id: balanceData.token_id,
+                token_symbol: balanceData.token_symbol,
+                new_balance: balanceData.new_balance
+            });
+
+            // Strategy 1: Try to find row by wallet_id AND token_id (most specific)
+            if (balanceData.token_id) {
+                const walletRow = document.querySelector(`tr[data-wallet-id="${balanceData.wallet_id}"][data-token-id="${balanceData.token_id}"]`);
+                
+                if (walletRow) {
+                    console.log('✅ Found matching wallet row for update (with token_id)');
+                    return this.updateRowBalance(walletRow, balanceData);
+                }
+            }
+            
+            // Strategy 2: Find row by wallet_id and token_symbol (fallback)
+            const walletRows = document.querySelectorAll(`tr[data-wallet-id="${balanceData.wallet_id}"]`);
+            console.log(`🔍 Found ${walletRows.length} rows for wallet_id: ${balanceData.wallet_id}`);
+            
+            for (const row of walletRows) {
+                const tokenBadge = row.querySelector('.token-badge');
+                if (tokenBadge && tokenBadge.textContent === balanceData.token_symbol) {
+                    console.log('✅ Found matching wallet row for update (by token symbol)');
+                    return this.updateRowBalance(row, balanceData);
+                }
+            }
+            
+            console.log(`❌ No wallet row found for wallet_id: ${balanceData.wallet_id}, token_symbol: ${balanceData.token_symbol}`);
+            
+            // Debug: check if there are any rows at all
+            const allRows = document.querySelectorAll('tr[data-wallet-id]');
+            console.log(`🔍 Total wallet rows in DOM: ${allRows.length}`);
+            
+            if (allRows.length > 0) {
+                console.log('Available wallet rows:');
+                allRows.forEach(row => {
+                    const walletId = row.getAttribute('data-wallet-id');
+                    const tokenId = row.getAttribute('data-token-id');
+                    const tokenSymbol = row.querySelector('.token-badge')?.textContent;
+                    console.log(`  - Wallet ID: ${walletId}, Token ID: ${tokenId}, Token: ${tokenSymbol}`);
+                });
+            }
+            
+            return false; // Failed to update
+        } catch (error) {
+            console.warn('Failed to update single balance in UI:', error);
+            return false;
+        }
+    }
+    
+    updateRowBalance(walletRow, balanceData) {
+        try {
+            // Update the balance amount in the balance cell
+            const balanceElement = walletRow.querySelector('.balance-amount');
+            if (balanceElement) {
+                const decimals = this.getTokenDecimals(balanceData.token_symbol);
+                const formattedBalance = this.formatBalance(balanceData.new_balance, decimals);
+                balanceElement.textContent = formattedBalance;
+                
+                // Add visual feedback
+                balanceElement.classList.add('balance-updated');
+                setTimeout(() => {
+                    balanceElement.classList.remove('balance-updated');
+                }, 2000);
+                
+                console.log(`🎯 Updated ${balanceData.token_symbol} balance in UI: ${formattedBalance}`);
+                
+                // Also trigger USDT value recalculation if needed
+                this.recalculateUSDTValue(walletRow, balanceData);
+                
+                return true; // Success
+            } else {
+                console.log('❌ Balance element not found in row');
+                return false;
+            }
+        } catch (error) {
+            console.warn('Failed to update row balance:', error);
+            return false;
+        }
+    }
+
+    recalculateUSDTValue(walletRow, balanceData) {
+        // Recalculate and update USDT value for the updated balance
+        try {
+            const usdtCell = walletRow.querySelector('.balance-cell:nth-child(5)'); // USDT Value column
+            if (usdtCell && balanceData.token_symbol && balanceData.new_balance) {
+                // Simple conversion: USDT = 1:1, other tokens = 0 for now
+                let usdtValue = 0;
+                if (balanceData.token_symbol === 'USDT') {
+                    usdtValue = balanceData.new_balance;
+                } else {
+                    // For other tokens, set to 0 or you can add specific rates here
+                    usdtValue = 0;
+                }
+                
+                const formattedValue = this.formatBalance(usdtValue, 2);
+                usdtCell.innerHTML = `<span class="usdt-value">$${formattedValue}</span>`;
+                
+                // Add visual feedback
+                usdtCell.classList.add('balance-updated');
+                setTimeout(() => {
+                    usdtCell.classList.remove('balance-updated');
+                }, 2000);
+                
+                console.log(`💲 Updated USDT value for ${balanceData.token_symbol}: $${formattedValue}`);
+            }
+        } catch (error) {
+            console.warn('Failed to recalculate USDT value:', error);
+        }
+    }
+
     handleBalanceUpdate(balanceData) {
         console.log('💰 Processing balance update:', balanceData);
         
@@ -259,11 +375,16 @@ class WalletTracker {
             clearTimeout(this.balanceUpdateTimeout);
         }
 
-        // Debounce balance updates to prevent rapid successive calls
+        // Immediate UI update for better responsiveness
+        const updateSuccess = this.updateSingleBalanceInUI(balanceData);
+        console.log(`🎯 Single balance UI update result: ${updateSuccess ? 'SUCCESS' : 'FAILED'}`);
+
+        // Debounce full wallet reload to prevent rapid successive calls  
         this.balanceUpdateTimeout = setTimeout(() => {
             // Try to enqueue a reload — if a display is in progress we'll mark it and run after
+            console.log('⏰ Triggering full wallet reload after debounce');
             this.enqueueWalletsReload(true);
-        }, 500); // 500ms debounce
+        }, 200); // Reduced debounce from 500ms to 200ms for faster updates
         
         // Show a notification immediately (don't debounce notifications)
         if (balanceData.change_type && balanceData.token_symbol) {
@@ -336,6 +457,20 @@ class WalletTracker {
     }
 
     handleNewTransaction(transactionData) {
+        if (!transactionData) {
+            console.warn('No transaction data received');
+            return;
+        }
+
+        // Check if transaction already exists to prevent duplicates
+        const existingHashes = new Set(this.allTransactions.map(t => t.hash || t.transaction_hash));
+        const txHash = transactionData.hash || transactionData.transaction_hash;
+        
+        if (txHash && existingHashes.has(txHash)) {
+            console.log('Transaction already exists, skipping duplicate:', txHash);
+            return;
+        }
+
         // Only prepend new transactions to existing view without full reload
         if (this.allTransactions.length > 0) {
             // Add new transaction to the beginning
@@ -579,6 +714,12 @@ class WalletTracker {
         const row = document.createElement('tr');
         row.className = 'transaction-row';
         
+        // Add data attributes for easier element identification
+        row.setAttribute('data-wallet-id', wallet.id);
+        if (balance && balance.token_id) {
+            row.setAttribute('data-token-id', balance.token_id);
+        }
+        
         const shortAddress = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
         const tokenSymbol = balance ? balance.token_symbol : 'N/A';
         const decimals = this.getTokenDecimals(tokenSymbol);
@@ -710,6 +851,16 @@ class WalletTracker {
         
         tbody.insertBefore(row, tbody.firstChild);
         
+        // Limit display to maximum transactions (e.g., 20)
+        const maxDisplay = this.config?.maxTransactionsDisplay || 20;
+        const transactionRows = tbody.querySelectorAll('.transaction-row');
+        if (transactionRows.length > maxDisplay) {
+            // Remove excess rows from the bottom
+            for (let i = maxDisplay; i < transactionRows.length; i++) {
+                transactionRows[i].remove();
+            }
+        }
+        
         // Animation will fade out automatically via CSS
         setTimeout(() => {
             row.classList.remove('transaction-new');
@@ -788,6 +939,12 @@ class WalletTracker {
         const row = document.createElement('tr');
         row.className = 'transaction-row';
         
+        // Validate transaction data
+        if (!tx) {
+            console.warn('Invalid transaction data');
+            return row;
+        }
+        
         // Format timestamp
         let timestamp = tx.timestamp;
         if (typeof timestamp === 'string') {
@@ -810,24 +967,30 @@ class WalletTracker {
         const fromTo = direction === 'IN' ? tx.from : tx.to;
         const shortFromTo = fromTo ? `${fromTo.slice(0, 6)}...${fromTo.slice(-4)}` : 'N/A';
         
+        // Token symbol with fallbacks
+        const tokenSymbol = tx.type || tx.token_symbol || tx.symbol || 'Unknown';
+        const blockchain = tx.blockchain || 'Unknown';
+        const amount = tx.amount || 0;
+        const status = tx.status || 'Unknown';
+        
         row.innerHTML = `
             <td class="timestamp">${timeStr}</td>
             <td>
-                <span class="transaction-hash" onclick="openExplorer('${tx.hash}', '${tx.blockchain}')" style="cursor: pointer;">
+                <span class="transaction-hash" onclick="openExplorer('${tx.hash}', '${blockchain}')" style="cursor: pointer;">
                     ${shortHash}
                 </span>
             </td>
             <td>
-                <span class="token-symbol">${tx.type}</span>
-                <span class="network-badge network-${tx.blockchain?.toLowerCase()}">${tx.blockchain}</span>
+                <span class="token-symbol">${tokenSymbol}</span>
+                <span class="network-badge network-${blockchain.toLowerCase()}">${blockchain}</span>
             </td>
-            <td class="transaction-amount">${this.formatBalance(parseFloat(tx.amount), this.getTokenDecimals(tx.type))}</td>
+            <td class="transaction-amount">${this.formatBalance(parseFloat(amount), this.getTokenDecimals(tokenSymbol))}</td>
             <td>
                 <span class="direction-badge ${directionClass}">${direction}</span>
             </td>
             <td class="address">${shortFromTo}</td>
             <td>
-                <span class="status-badge status-success">${tx.status}</span>
+                <span class="status-badge status-success">${status}</span>
             </td>
         `;
         

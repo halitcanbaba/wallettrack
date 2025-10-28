@@ -3,8 +3,10 @@ import base58
 import hashlib
 import logging
 import os
+import time
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
+from dataclasses import dataclass
 
 import httpx
 from sqlalchemy import select
@@ -17,6 +19,12 @@ from websocket_manager import manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+@dataclass
+class BalanceCache:
+    trx_balance: float
+    usdt_balance: float
+    timestamp: float
 
 class TronGridClient:
     """Client for interacting with TronGrid API"""
@@ -47,6 +55,10 @@ class TronGridClient:
         self.max_retries = int(os.getenv('TRON_MAX_RETRIES', '3'))
         self.retry_delay = int(os.getenv('TRON_RETRY_DELAY', '5'))
         self.rate_limit_enabled = os.getenv('TRON_RATE_LIMIT_ENABLED', 'true').lower() == 'true'
+        
+        # Balance cache for faster consecutive requests
+        self.balance_cache: Dict[str, BalanceCache] = {}
+        self.cache_ttl = 30  # Cache valid for 30 seconds
         
         logger.info(f"TRON Rate Limiting: interval={self.min_request_interval}s, retries={self.max_retries}, enabled={self.rate_limit_enabled}")
     
@@ -399,10 +411,28 @@ class TronGridClient:
 
 
     async def fetch_wallet_balances(self, address: str) -> tuple:
-        """Fetch TRX and USDT balances for a wallet"""
+        """Fetch TRX and USDT balances for a wallet with caching"""
         try:
+            current_time = time.time()
+            
+            # Check cache first
+            if address in self.balance_cache:
+                cached = self.balance_cache[address]
+                if current_time - cached.timestamp < self.cache_ttl:
+                    logger.debug(f"Using cached balances for {address}")
+                    return cached.trx_balance, cached.usdt_balance
+            
+            # Fetch fresh balances
             trx_balance = await self.get_trx_balance(address)
             usdt_balance = await self.get_usdt_balance(address)
+            
+            # Update cache
+            self.balance_cache[address] = BalanceCache(
+                trx_balance=trx_balance,
+                usdt_balance=usdt_balance,
+                timestamp=current_time
+            )
+            
             return trx_balance, usdt_balance
         except Exception as e:
             logger.error(f"Error fetching wallet balances for {address}: {e}")
